@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { imageToPdf } from "@/lib/convert";
 import { uploads } from "@/lib/db";
-import { parseLayout } from "@/lib/image-layout";
+import { parseLayout } from "@/shared/image-layout";
 import { requireUser } from "@/lib/session";
 
 /** The upload as a PDF. For images it is built with the layout in `?layout=<json>`. */

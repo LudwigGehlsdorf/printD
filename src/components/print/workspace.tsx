@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ImageControls, ImagePreview } from "@/components/image-layout-editor";
-import { PagePreview } from "@/components/page-preview";
+import { ImageControls, ImagePreview } from "@/components/print/image-layout-editor";
+import { PagePreview } from "@/components/print/page-preview";
 import { Button, ChoiceGroup, Stepper, buttonClass } from "@/components/ui";
-import { FileButton } from "@/components/upload";
-import { DEFAULT_LAYOUT, type ImageInfo, type ImageLayout } from "@/lib/image-layout";
+import { FileButton } from "@/components/print/upload";
+import { DEFAULT_LAYOUT, type ImageInfo, type ImageLayout } from "@/shared/image-layout";
 
 /** `image` is set for pictures, which get layout controls instead of page selection. */
 export type Upload = { id: string; name: string; pages: number; image: ImageInfo | null };

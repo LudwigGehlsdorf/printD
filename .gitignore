@@ -43,3 +43,8 @@ next-env.d.ts
 
 # local data (database, uploads, dry-run output)
 /data
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { HideButton, formatDate } from "@/components/job-history";
+import { HideButton, formatDate } from "@/components/jobs/job-history";
 import type { JobView } from "@/lib/jobs";
 
 const IN_PANEL = 3;

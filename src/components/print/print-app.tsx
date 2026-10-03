@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { JobHistory } from "@/components/job-history";
-import { useJobs } from "@/components/jobs-context";
+import { JobHistory } from "@/components/jobs/job-history";
+import { useJobs } from "@/components/jobs/jobs-context";
 import { Notice } from "@/components/ui";
-import { DropOverlay, FilePicker, UploadProgress, useWindowDrop } from "@/components/upload";
-import { OtherWaiting, Panel, WaitingPanel } from "@/components/waiting";
-import { Workspace, type PrintOptions, type Released, type Upload } from "@/components/workspace";
+import { DropOverlay, FilePicker, UploadProgress, useWindowDrop } from "@/components/print/upload";
+import { OtherWaiting, Panel, WaitingPanel } from "@/components/jobs/waiting";
+import { Workspace, type PrintOptions, type Released, type Upload } from "@/components/print/workspace";
 
 type Stage =
   | { kind: "idle" }

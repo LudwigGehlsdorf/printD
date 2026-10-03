@@ -1,4 +1,4 @@
-# Installed to /etc/caddy/Caddyfile by setup-pi.sh, with PRINTD_HOST replaced by the
+# Installed to /etc/caddy/Caddyfile by setup.sh, with PRINTD_HOST replaced by the
 # hostname (e.g. print.dsek.se). With a real hostname Caddy gets an HTTPS certificate from
 # Let's Encrypt automatically; ports 80 and 443 must be reachable from the internet.
 PRINTD_HOST {

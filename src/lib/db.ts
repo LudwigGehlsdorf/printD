@@ -1,7 +1,7 @@
 import "server-only";
 import Database from "better-sqlite3";
 import { config } from "@/lib/config";
-import type { ImageInfo } from "@/lib/image-layout";
+import type { ImageInfo } from "@/shared/image-layout";
 
 const db = new Database(config.dbPath);
 db.pragma("journal_mode = WAL");

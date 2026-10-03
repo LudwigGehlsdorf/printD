@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import { config } from "@/lib/config";
 import { imageToPdf, selectPages } from "@/lib/convert";
 import { jobs, uploads, type Upload } from "@/lib/db";
-import { parseLayout } from "@/lib/image-layout";
+import { parseLayout } from "@/shared/image-layout";
 import { generatePin, submit } from "@/lib/printer";
 import { requireUser } from "@/lib/session";
 

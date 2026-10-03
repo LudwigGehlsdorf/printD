@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ChoiceGroup } from "@/components/ui";
-import { CUSTOM_PERCENT, layoutImage, type ImageInfo, type ImageLayout, type ImageScale } from "@/lib/image-layout";
+import { CUSTOM_PERCENT, layoutImage, type ImageInfo, type ImageLayout, type ImageScale } from "@/shared/image-layout";
 
 const percent = (value: number, total: number) => `${(value / total) * 100}%`;
 

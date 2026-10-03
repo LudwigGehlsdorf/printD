@@ -8,7 +8,7 @@ import { PDFDocument, clip, endPath, popGraphicsState, pushGraphicsState, rectan
 import sharp from "sharp";
 import { config } from "@/lib/config";
 import type { ImageMeta } from "@/lib/db";
-import { layoutImage, type ImageLayout } from "@/lib/image-layout";
+import { layoutImage, type ImageLayout } from "@/shared/image-layout";
 
 const run = promisify(execFile);
 

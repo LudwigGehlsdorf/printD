@@ -2,7 +2,7 @@
 # Sets up printD on a Raspberry Pi running Raspberry Pi OS (64-bit, Bookworm or newer).
 #
 #   sudo git clone <repo> /opt/printd
-#   sudo /opt/printd/deploy/setup-pi.sh [hostname]
+#   sudo /opt/printd/deploy/setup.sh [hostname]
 #
 # Safe to run again: every step only does what is still missing. Run it again after
 # connecting the printer if the printer queue could not be created the first time.
@@ -12,7 +12,6 @@ export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
 HOST="${1:-}"
 REPO_DIR=/opt/printd
-APP_DIR="$REPO_DIR/web"
 DATA_DIR=/var/lib/printd
 ENV_FILE=/etc/printd/printd.env
 QUEUE=printd
@@ -28,7 +27,7 @@ die() { printf '\033[1;31mError: %s\033[0m\n' "$*" >&2; exit 1; }
 
 [[ $EUID -eq 0 ]] || die "run with sudo"
 [[ "$(uname -m)" == "aarch64" ]] || die "needs 64-bit Raspberry Pi OS (found $(uname -m))"
-[[ -d "$APP_DIR" ]] || die "clone the repository to $REPO_DIR first"
+[[ -f "$REPO_DIR/package.json" ]] || die "clone the repository to $REPO_DIR first"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -105,7 +104,7 @@ else
 fi
 
 step "Building the app (this takes a few minutes)"
-sudo -u printd -H COREPACK_ENABLE_DOWNLOAD_PROMPT=0 bash -c "cd '$APP_DIR' && corepack pnpm install --frozen-lockfile && corepack pnpm build"
+sudo -u printd -H COREPACK_ENABLE_DOWNLOAD_PROMPT=0 bash -c "cd '$REPO_DIR' && corepack pnpm install --frozen-lockfile && corepack pnpm build"
 
 step "Starting the printd service"
 install -m 644 "$REPO_DIR/deploy/printd.service" /etc/systemd/system/printd.service
@@ -120,7 +119,7 @@ if [[ -n "$HOST" ]]; then
   note "Serving https://$HOST"
 else
   note "No hostname given, so Caddy is left alone. Run again with the hostname once it exists:"
-  note "  sudo $REPO_DIR/deploy/setup-pi.sh print.example.org"
+  note "  sudo $REPO_DIR/deploy/setup.sh print.example.org"
 fi
 
 step "Done"

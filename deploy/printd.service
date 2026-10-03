@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=printd
 Group=printd
-WorkingDirectory=/opt/printd/web
+WorkingDirectory=/opt/printd
 EnvironmentFile=/etc/printd/printd.env
 Environment=HOME=/var/lib/printd
 # Only Caddy talks to the app; it is not reachable from the network directly.

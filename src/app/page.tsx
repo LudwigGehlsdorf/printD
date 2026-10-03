@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { signIn, signOut } from "@/auth";
 import { DsekLogo } from "@/components/dsek-logo";
-import { JobsProvider, PrinterStatus } from "@/components/jobs-context";
-import { PrintApp } from "@/components/print-app";
+import { JobsProvider, PrinterStatus } from "@/components/jobs/jobs-context";
+import { PrintApp } from "@/components/print/print-app";
 import { buttonClass } from "@/components/ui";
 import { config } from "@/lib/config";
 import { ACCEPTED_EXTENSIONS } from "@/lib/convert";

@@ -9,7 +9,7 @@ export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 [[ $EUID -eq 0 ]] || { echo "Run with sudo" >&2; exit 1; }
 
 sudo -u printd -H git -C /opt/printd pull --ff-only
-sudo -u printd -H COREPACK_ENABLE_DOWNLOAD_PROMPT=0 bash -c "cd /opt/printd/web && corepack pnpm install --frozen-lockfile && corepack pnpm build"
+sudo -u printd -H COREPACK_ENABLE_DOWNLOAD_PROMPT=0 bash -c "cd /opt/printd && corepack pnpm install --frozen-lockfile && corepack pnpm build"
 install -m 644 /opt/printd/deploy/printd.service /etc/systemd/system/printd.service
 systemctl daemon-reload
 systemctl restart printd

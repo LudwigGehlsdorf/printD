@@ -10,8 +10,7 @@ Upload a document, check the preview, pick your settings and collect it at the p
 
 ---
 
-printD is a simple print server for the printer of [D-sektionen](https://dsek.se), the
-computer science and engineering guild at LTH. Members log in with their D-sektionen
+printD is a simple print server for the printer of [D-sektionen](https://dsek.se). Members log in with their D-sektionen
 account, upload a file and print it. Every job waits in the printer until its owner enters a
 PIN on the printer's screen, so nothing is left lying in the tray.
 
@@ -60,7 +59,7 @@ any printer that has a CUPS driver (without Secure Print, jobs simply print righ
 ## Getting started
 
 Run printD locally to try it out or work on it. By default it runs in *test mode*: nothing
-is sent to a printer, and each job's PDF and settings are saved to `web/data/dry-run/` instead.
+is sent to a printer, and each job's PDF and settings are saved to `data/dry-run/` instead.
 
 ### Prerequisites
 
@@ -75,7 +74,7 @@ is sent to a printer, and each job's PDF and settings are saved to `web/data/dry
 
    ```sh
    git clone <repository URL> printd
-   cd printd/web
+   cd printd
    pnpm install
    ```
 
@@ -95,14 +94,14 @@ is sent to a printer, and each job's PDF and settings are saved to `web/data/dry
    ```
 
 4. Open <http://localhost:3000>, log in and print something. With `PRINT_MODE=dry-run`
-   the result ends up in `web/data/dry-run/`.
+   the result ends up in `data/dry-run/`.
 
 To print for real, set up a printer queue as described in [Printer setup](#printer-setup)
 and set `PRINT_MODE=cups` and `PRINTER_NAME` in `.env.local`.
 
 ## Configuration
 
-printD is configured with environment variables: `web/.env.local` during development, and
+printD is configured with environment variables: `.env.local` during development, and
 `/etc/printd/printd.env` in production (see [`deploy/printd.env.example`](deploy/printd.env.example)).
 
 | Variable | Default | Description |
@@ -191,7 +190,7 @@ example 64-bit Raspberry Pi OS) from scratch:
 
 | File | Purpose |
 | --- | --- |
-| [`setup-pi.sh`](deploy/setup-pi.sh) | One-time setup. Safe to run again: it only does what is still missing. |
+| [`setup.sh`](deploy/setup.sh) | One-time setup. Safe to run again: it only does what is still missing. |
 | [`update.sh`](deploy/update.sh) | Pulls the latest version, rebuilds and restarts. |
 | [`printd.env.example`](deploy/printd.env.example) | Production settings, installed as `/etc/printd/printd.env`. |
 | [`printd.service`](deploy/printd.service) | systemd service: runs printD as user `printd` on `127.0.0.1:3000`. |
@@ -207,7 +206,7 @@ printer by USB, and turn the printer on.
 ```sh
 sudo apt-get install -y git
 sudo git clone <repository URL> /opt/printd
-sudo /opt/printd/deploy/setup-pi.sh
+sudo /opt/printd/deploy/setup.sh
 ```
 
 The script:
@@ -236,10 +235,10 @@ Point a hostname at the server, open ports 80 and 443 to it, and run the script 
 the hostname. Caddy fetches a certificate from Let's Encrypt automatically:
 
 ```sh
-sudo /opt/printd/deploy/setup-pi.sh print.example.org
+sudo /opt/printd/deploy/setup.sh print.example.org
 ```
 
-> **No hostname yet?** Put the public development login from `web/.env.example` in
+> **No hostname yet?** Put the public development login from `.env.example` in
 > `/etc/printd/printd.env` and reach printD through an SSH tunnel, so it is served on
 > `localhost`, which that login accepts:
 >
@@ -304,22 +303,25 @@ The queue in `PRINTER_NAME` does not exist. List the queues with `lpstat -p`.
 
 ```
 printd/
-├── deploy/                 Production setup: scripts, systemd service, Caddy, settings
-└── web/                    The Next.js app
-    └── src/
-        ├── app/            Pages and API routes (/api/uploads, /api/print, /api/jobs)
-        ├── components/     UI: upload flow, page preview, image layout editor, job list
-        └── lib/
-            ├── convert.ts       File → PDF, page selection, image normalisation
-            ├── image-layout.ts  Image placement, shared by preview and PDF
-            ├── printer.ts       CUPS: submit, status, cancel, Canon options
-            ├── db.ts            SQLite: uploads and the print log
-            └── session.ts       Login and group check
+├── deploy/                  Production setup: scripts, systemd service, Caddy, settings
+└── src/
+    ├── app/                 Pages and API routes (/api/uploads, /api/print, /api/jobs)
+    ├── components/
+    │   ├── print/           Upload, page preview, image layout editor, print settings
+    │   ├── jobs/            Job list, waiting PINs, polling
+    │   └── ui.tsx           Shared buttons and form controls
+    ├── lib/                 Server only
+    │   ├── convert.ts       File → PDF, page selection, image handling
+    │   ├── printer.ts       CUPS: submit, status, cancel, Canon options
+    │   ├── db.ts            SQLite: uploads and the print log
+    │   └── session.ts       Login and group check
+    └── shared/
+        └── image-layout.ts  Image placement, used by both the preview and the PDF
 ```
 
 ## Development
 
-From `web/`:
+From the repository root:
 
 | Command | What it does |
 | --- | --- |
