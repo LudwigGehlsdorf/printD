@@ -2,140 +2,113 @@
 
 import { useRef, useState } from "react";
 import { ChoiceGroup } from "@/components/ui";
-import {
-  CUSTOM_PERCENT_RANGE,
-  layoutImage,
-  type ImageInfo,
-  type ImageLayout,
-  type ImageScale,
-} from "@/lib/image-layout";
+import { CUSTOM_PERCENT, layoutImage, type ImageInfo, type ImageLayout, type ImageScale } from "@/lib/image-layout";
 
-const pct = (value: number, total: number) => `${(value / total) * 100}%`;
+const percent = (value: number, total: number) => `${(value / total) * 100}%`;
 
-/**
- * A4 sheet with the image placed exactly as it will be printed (same layout function as the
- * server). The image can be dragged to choose what is cropped or where it sits.
- */
+const box = (r: { x: number; y: number; w: number; h: number }, width: number, height: number) => ({
+  left: percent(r.x, width),
+  top: percent(r.y, height),
+  width: percent(r.w, width),
+  height: percent(r.h, height),
+});
+
+/** The A4 sheet as it will be printed. The image can be dragged to move or crop it. */
 export function ImagePreview({
   src,
   image,
   layout,
   onChange,
-  disabled = false,
+  disabled,
 }: {
   src: string;
   image: ImageInfo;
   layout: ImageLayout;
   onChange: (layout: ImageLayout) => void;
-  disabled?: boolean;
+  disabled: boolean;
 }) {
   const sheet = useRef<HTMLDivElement>(null);
   const [loaded, setLoaded] = useState(false);
   const page = layoutImage(image, layout);
   const cell = page.cells[0];
+  // Free space in the cell (negative when the image overflows it).
   const slackX = cell.w - cell.image.w;
   const slackY = cell.h - cell.image.h;
-  const movable = !disabled && (Math.abs(slackX) > 0.5 || Math.abs(slackY) > 0.5);
-  const moved = layout.offsetX !== 0 || layout.offsetY !== 0;
+  const canMoveX = Math.abs(slackX) > 0.5;
+  const canMoveY = Math.abs(slackY) > 0.5;
+  const movable = !disabled && (canMoveX || canMoveY);
 
-  function startDrag(e: React.PointerEvent) {
-    if (!movable || !sheet.current) return;
+  function startDrag(e: React.PointerEvent<HTMLElement>) {
+    if (!movable) return;
     e.preventDefault();
-    const target = e.currentTarget as HTMLElement;
+    const target = e.currentTarget;
     target.setPointerCapture(e.pointerId);
-    const pointsPerPixel = page.width / sheet.current.getBoundingClientRect().width;
+    const pointsPerPixel = page.width / sheet.current!.clientWidth;
     const start = { x: e.clientX, y: e.clientY, offsetX: layout.offsetX, offsetY: layout.offsetY };
+    const clamp = (n: number) => Math.min(1, Math.max(-1, n));
 
-    const move = (ev: PointerEvent) => {
-      const dx = (ev.clientX - start.x) * pointsPerPixel;
-      const dy = (ev.clientY - start.y) * pointsPerPixel;
-      // The offset spans the free space (or overflow): moving by slack/2 changes it by 1.
-      const clamp = (n: number) => Math.min(1, Math.max(-1, n));
+    // Moving the image by half the slack changes the offset by 1.
+    const move = (ev: PointerEvent) =>
       onChange({
         ...layout,
-        offsetX: Math.abs(slackX) > 0.5 ? clamp(start.offsetX + (2 * dx) / slackX) : layout.offsetX,
-        offsetY: Math.abs(slackY) > 0.5 ? clamp(start.offsetY + (2 * dy) / slackY) : layout.offsetY,
+        offsetX: canMoveX ? clamp(start.offsetX + (2 * (ev.clientX - start.x) * pointsPerPixel) / slackX) : layout.offsetX,
+        offsetY: canMoveY ? clamp(start.offsetY + (2 * (ev.clientY - start.y) * pointsPerPixel) / slackY) : layout.offsetY,
       });
-    };
     const end = () => {
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", end);
-      target.removeEventListener("pointercancel", end);
     };
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", end);
-    target.addEventListener("pointercancel", end);
   }
 
   return (
     <div>
       <div
         ref={sheet}
-        className="relative mx-auto w-full max-w-sm overflow-hidden rounded-xs border bg-white shadow-sm transition-[aspect-ratio] duration-200"
-        style={{ aspectRatio: `${page.width} / ${page.height}` }}
         aria-label="Förhandsvisning av utskriften"
+        className="relative mx-auto w-full max-w-sm overflow-hidden rounded-xs border bg-white shadow-sm"
+        style={{ aspectRatio: `${page.width} / ${page.height}` }}
       >
-        {!loaded && (
-          <p className="absolute inset-0 flex items-center justify-center text-xs text-zinc-500">Laddar bild…</p>
-        )}
-        {/* The area the printer can reach. */}
+        {!loaded && <p className="absolute inset-0 flex items-center justify-center text-xs text-zinc-500">Laddar bild…</p>}
         <div
           className="pointer-events-none absolute border border-dashed border-zinc-300"
-          style={{
-            left: pct(page.printable.x, page.width),
-            top: pct(page.printable.y, page.height),
-            width: pct(page.printable.w, page.width),
-            height: pct(page.printable.h, page.height),
-          }}
+          style={box(page.printable, page.width, page.height)}
         />
         {page.cells.map((c, i) => (
           <div
             key={i}
             onPointerDown={startDrag}
             className={`absolute touch-none overflow-hidden ${movable ? "cursor-grab active:cursor-grabbing" : ""}`}
-            style={{
-              left: pct(c.x, page.width),
-              top: pct(c.y, page.height),
-              width: pct(c.w, page.width),
-              height: pct(c.h, page.height),
-            }}
+            style={box(c, page.width, page.height)}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element -- private, already-sized upload */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- a private upload, already resized */}
             <img
               src={src}
               alt=""
               draggable={false}
               onLoad={() => setLoaded(true)}
-              className={`absolute max-w-none select-none transition-opacity duration-300 ${loaded ? "opacity-100" : "opacity-0"}`}
-              style={{
-                left: pct(c.image.x - c.x, c.w),
-                top: pct(c.image.y - c.y, c.h),
-                width: pct(c.image.w, c.w),
-                height: pct(c.image.h, c.h),
-              }}
+              className={`absolute max-w-none select-none transition-opacity duration-300 ${loaded ? "" : "opacity-0"}`}
+              style={box({ ...c.image, x: c.image.x - c.x, y: c.image.y - c.y }, c.w, c.h)}
             />
           </div>
         ))}
       </div>
       <p className="mt-3 text-center text-xs text-muted-foreground">
         {movable ? "Dra i bilden för att flytta den." : "Den streckade linjen visar skrivarens marginal."}
-        {moved && !disabled && (
-          <>
-            {" "}
-            <button
-              className="underline underline-offset-2 hover:text-foreground"
-              onClick={() => onChange({ ...layout, offsetX: 0, offsetY: 0 })}
-            >
-              Centrera
-            </button>
-          </>
+        {!disabled && (layout.offsetX !== 0 || layout.offsetY !== 0) && (
+          <button
+            className="ml-1 underline underline-offset-2 hover:text-foreground"
+            onClick={() => onChange({ ...layout, offsetX: 0, offsetY: 0 })}
+          >
+            Centrera
+          </button>
         )}
       </p>
     </div>
   );
 }
 
-/** Scaling, orientation, margins and images per sheet. */
 export function ImageControls({
   image,
   layout,
@@ -146,6 +119,7 @@ export function ImageControls({
   onChange: (layout: ImageLayout) => void;
 }) {
   const set = (patch: Partial<ImageLayout>) => onChange({ ...layout, ...patch });
+  const recentre = { offsetX: 0, offsetY: 0 };
 
   return (
     <>
@@ -154,8 +128,7 @@ export function ImageControls({
           label="Storlek"
           name="scale"
           value={layout.scale}
-          // A new size mode starts centred.
-          onChange={(scale) => set({ scale, offsetX: 0, offsetY: 0 })}
+          onChange={(scale) => set({ scale, ...recentre })}
           options={[
             { value: "fit", label: "Anpassa", description: "Hela bilden syns" },
             { value: "fill", label: "Fyll sidan", description: "Kanterna beskärs" },
@@ -168,8 +141,8 @@ export function ImageControls({
             <span className="sr-only">Storlek i procent</span>
             <input
               type="range"
-              min={CUSTOM_PERCENT_RANGE.min}
-              max={CUSTOM_PERCENT_RANGE.max}
+              min={CUSTOM_PERCENT.min}
+              max={CUSTOM_PERCENT.max}
               step={5}
               value={layout.customPercent}
               onChange={(e) => set({ customPercent: Number(e.target.value) })}
@@ -182,7 +155,7 @@ export function ImageControls({
       <ChoiceGroup
         label="Orientering"
         name="orientation"
-        columns={3}
+        segmented
         value={layout.orientation}
         onChange={(orientation) => set({ orientation })}
         options={[
@@ -204,14 +177,10 @@ export function ImageControls({
       <ChoiceGroup
         label="Bilder per ark"
         name="perSheet"
-        columns={3}
-        value={String(layout.perSheet) as "1" | "2" | "4"}
-        onChange={(v) => set({ perSheet: Number(v) as ImageLayout["perSheet"], offsetX: 0, offsetY: 0 })}
-        options={[
-          { value: "1", label: "1" },
-          { value: "2", label: "2" },
-          { value: "4", label: "4" },
-        ]}
+        segmented
+        value={String(layout.perSheet)}
+        onChange={(n) => set({ perSheet: Number(n) as ImageLayout["perSheet"], ...recentre })}
+        options={["1", "2", "4"].map((n) => ({ value: n, label: n }))}
       />
     </>
   );

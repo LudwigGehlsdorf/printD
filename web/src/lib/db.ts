@@ -1,6 +1,7 @@
 import "server-only";
 import Database from "better-sqlite3";
 import { config } from "@/lib/config";
+import type { ImageInfo } from "@/lib/image-layout";
 
 const db = new Database(config.dbPath);
 db.pragma("journal_mode = WAL");
@@ -10,8 +11,9 @@ db.exec(`
     id            TEXT PRIMARY KEY,
     user_id       TEXT NOT NULL,
     original_name TEXT NOT NULL,
-    pdf_path      TEXT NOT NULL,
+    path          TEXT NOT NULL,
     pages         INTEGER NOT NULL,
+    image         TEXT,
     created_at    INTEGER NOT NULL
   );
 
@@ -29,32 +31,28 @@ db.exec(`
     cups_job_id TEXT,
     status      TEXT NOT NULL,
     error       TEXT,
+    pin         TEXT,
+    hidden_at   INTEGER,
     created_at  INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS jobs_user ON jobs (user_id, created_at);
 `);
 
-// Columns added after the first version.
-const uploadColumns = (db.prepare(`PRAGMA table_info(uploads)`).all() as { name: string }[]).map((c) => c.name);
-if (!uploadColumns.includes("image")) db.exec(`ALTER TABLE uploads ADD COLUMN image TEXT`);
-const jobColumns = (db.prepare(`PRAGMA table_info(jobs)`).all() as { name: string }[]).map((c) => c.name);
-if (!jobColumns.includes("pin")) db.exec(`ALTER TABLE jobs ADD COLUMN pin TEXT`);
-if (!jobColumns.includes("hidden_at")) db.exec(`ALTER TABLE jobs ADD COLUMN hidden_at INTEGER`);
+export type ImageMeta = ImageInfo & { format: "jpeg" | "png" };
 
 export type Upload = {
   id: string;
   user_id: string;
   original_name: string;
-  /** The converted PDF, or for images the normalised image file. */
-  pdf_path: string;
+  /** The PDF, or for images the image itself (laid out on the page when printing). */
+  path: string;
   pages: number;
-  /** For images: JSON with width, height, dpi and format. Null for documents. */
-  image: string | null;
+  image: ImageMeta | null;
   created_at: number;
 };
 
-/** "held": sent to the printer with Secure Print, waiting for the PIN to be entered there. */
-export type JobStatus = "queued" | "printing" | "held" | "done" | "cancelled" | "failed";
+/** "held": a Secure Print job that reached the printer and waits for its PIN there. */
+export type JobStatus = "queued" | "held" | "done" | "cancelled" | "failed";
 
 export type Job = {
   id: number;
@@ -70,25 +68,26 @@ export type Job = {
   cups_job_id: string | null;
   status: JobStatus;
   error: string | null;
-  /** Secure Print PIN, if the job is held on the printer. */
   pin: string | null;
   created_at: number;
 };
 
+type UploadRow = Omit<Upload, "image"> & { image: string | null };
+const parseUpload = (row: UploadRow | undefined): Upload | undefined =>
+  row && { ...row, image: row.image ? JSON.parse(row.image) : null };
+
 export const uploads = {
-  insert(u: Upload) {
+  insert(upload: Upload) {
     db.prepare(
-      `INSERT INTO uploads (id, user_id, original_name, pdf_path, pages, image, created_at)
-       VALUES (@id, @user_id, @original_name, @pdf_path, @pages, @image, @created_at)`,
-    ).run(u);
+      `INSERT INTO uploads (id, user_id, original_name, path, pages, image, created_at)
+       VALUES (@id, @user_id, @original_name, @path, @pages, @image, @created_at)`,
+    ).run({ ...upload, image: upload.image && JSON.stringify(upload.image) });
   },
-  get(id: string, userId: string): Upload | undefined {
-    return db.prepare(`SELECT * FROM uploads WHERE id = ? AND user_id = ?`).get(id, userId) as
-      | Upload
-      | undefined;
+  get(id: string, userId: string) {
+    return parseUpload(db.prepare(`SELECT * FROM uploads WHERE id = ? AND user_id = ?`).get(id, userId) as UploadRow);
   },
-  expired(before: number): Upload[] {
-    return db.prepare(`SELECT * FROM uploads WHERE created_at < ?`).all(before) as Upload[];
+  olderThan(time: number) {
+    return db.prepare(`SELECT id, path FROM uploads WHERE created_at < ?`).all(time) as { id: string; path: string }[];
   },
   delete(id: string) {
     db.prepare(`DELETE FROM uploads WHERE id = ?`).run(id);
@@ -96,32 +95,27 @@ export const uploads = {
 };
 
 export const jobs = {
-  insert(j: Omit<Job, "id">): number {
-    const result = db
-      .prepare(
-        `INSERT INTO jobs (user_id, user_name, user_email, file_name, pages, copies, duplex, color,
-                           page_range, cups_job_id, status, error, pin, created_at)
-         VALUES (@user_id, @user_name, @user_email, @file_name, @pages, @copies, @duplex, @color,
-                 @page_range, @cups_job_id, @status, @error, @pin, @created_at)`,
-      )
-      .run(j);
-    return Number(result.lastInsertRowid);
+  insert(job: Omit<Job, "id">) {
+    db.prepare(
+      `INSERT INTO jobs (user_id, user_name, user_email, file_name, pages, copies, duplex, color,
+                         page_range, cups_job_id, status, error, pin, created_at)
+       VALUES (@user_id, @user_name, @user_email, @file_name, @pages, @copies, @duplex, @color,
+               @page_range, @cups_job_id, @status, @error, @pin, @created_at)`,
+    ).run(job);
   },
-  get(id: number, userId: string): Job | undefined {
-    return db.prepare(`SELECT * FROM jobs WHERE id = ? AND user_id = ?`).get(id, userId) as
-      | Job
-      | undefined;
+  get(id: number, userId: string) {
+    return db.prepare(`SELECT * FROM jobs WHERE id = ? AND user_id = ?`).get(id, userId) as Job | undefined;
   },
-  recentForUser(userId: string, limit = 20): Job[] {
+  recent(userId: string, limit: number) {
     return db
       .prepare(`SELECT * FROM jobs WHERE user_id = ? AND hidden_at IS NULL ORDER BY created_at DESC LIMIT ?`)
       .all(userId, limit) as Job[];
   },
-  /** Hides a job from the user's list. The row stays in the database as the print log. */
+  /** Hidden jobs stay in the table, which is the print log. */
   hide(id: number) {
     db.prepare(`UPDATE jobs SET hidden_at = ? WHERE id = ?`).run(Date.now(), id);
   },
-  setStatus(id: number, status: JobStatus, error: string | null = null) {
-    db.prepare(`UPDATE jobs SET status = ?, error = ? WHERE id = ?`).run(status, error, id);
+  setStatus(id: number, status: JobStatus) {
+    db.prepare(`UPDATE jobs SET status = ? WHERE id = ?`).run(status, id);
   },
 };

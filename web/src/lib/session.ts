@@ -2,13 +2,7 @@ import "server-only";
 import { auth } from "@/auth";
 import { config } from "@/lib/config";
 
-export type User = {
-  id: string;
-  /** Short login name, e.g. the student id. */
-  username: string;
-  name: string;
-  email: string;
-};
+export type User = { id: string; username: string; name: string; email: string };
 
 export type Viewer =
   | { status: "anonymous" }
@@ -21,29 +15,25 @@ export async function getViewer(): Promise<Viewer> {
   }
 
   const session = await auth();
-  if (!session?.user?.id) return { status: "anonymous" };
+  if (!session?.user) return { status: "anonymous" };
 
-  const user: User = {
-    id: session.user.id,
-    username: session.username ?? session.user.email?.split("@")[0] ?? session.user.id,
-    name: session.user.name ?? session.user.email ?? "Unknown",
+  const user = {
+    id: session.user.id!,
+    username: session.username,
+    name: session.user.name ?? session.username,
     email: session.user.email ?? "",
   };
-  const allowed = config.allowedGroups.length === 0 || session.groups.some(isInAllowedGroup);
-  return allowed
+  return config.allowedGroups.length === 0 || session.groups.some(isAllowedGroup)
     ? { status: "allowed", user }
     : { status: "forbidden", user, groups: session.groups };
 }
 
-/**
- * Groups are hierarchical, like on the D-sektionen website: membership of
- * "dsek.infu.mdlm" also counts as membership of "dsek.infu" and "dsek".
- */
-function isInAllowedGroup(group: string) {
+// Groups are hierarchical like on dsek.se: "dsek.infu.mdlm" is also a member of "dsek.infu".
+function isAllowedGroup(group: string) {
   return config.allowedGroups.some((allowed) => group === allowed || group.startsWith(`${allowed}.`));
 }
 
-/** For route handlers: returns the user, or a 401/403 response. */
+/** For route handlers: the user, or a 401/403 response to return. */
 export async function requireUser(): Promise<User | Response> {
   const viewer = await getViewer();
   if (viewer.status === "anonymous") return Response.json({ error: "Du är inte inloggad." }, { status: 401 });

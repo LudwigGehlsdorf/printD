@@ -1,8 +1,8 @@
 import "server-only";
 import fs from "node:fs/promises";
 import { config } from "@/lib/config";
-import { jobs, uploads, type Job } from "@/lib/db";
-import { activeJobs, cancel } from "@/lib/printer";
+import { jobs, uploads, type JobStatus } from "@/lib/db";
+import { queuedJobIds } from "@/lib/printer";
 
 export type JobView = {
   id: number;
@@ -12,33 +12,28 @@ export type JobView = {
   duplex: boolean;
   color: boolean;
   pageRange: string | null;
-  /** "sent": held longer than the printer keeps Secure Print jobs, so probably released or deleted. */
-  status: Job["status"] | "sent";
-  error: string | null;
+  /** "sent": held for longer than the printer keeps Secure Print jobs. */
+  status: JobStatus | "sent";
   pin: string | null;
   createdAt: number;
 };
 
-/** Recent jobs for a user, with statuses refreshed from CUPS. */
+/** The user's latest jobs, with queued ones updated from CUPS. */
 export async function recentJobs(userId: string, limit: number): Promise<JobView[]> {
-  const rows = jobs.recentForUser(userId, Math.min(Math.max(limit, 1), 200));
-  const pending = rows.filter((j) => j.status === "queued" || j.status === "printing");
+  const rows = jobs.recent(userId, Math.min(limit, 200));
 
-  if (pending.length > 0) {
-    const active = await activeJobs();
-    for (const job of pending) {
-      const live = job.cups_job_id ? active.get(job.cups_job_id) : undefined;
-      // Jobs CUPS no longer lists have been sent to the printer. Secure Print jobs then wait
-      // there for the PIN; we cannot see when they are released.
-      const status = live ?? (job.pin ? "held" : "done");
-      if (status !== job.status) {
-        jobs.setStatus(job.id, status);
-        job.status = status;
-      }
+  if (rows.some((j) => j.status === "queued")) {
+    const queued = await queuedJobIds();
+    for (const job of rows) {
+      if (job.status !== "queued" || queued.has(job.cups_job_id!)) continue;
+      // CUPS is done with it. A Secure Print job now waits in the printer for its PIN; we
+      // can't see when that happens.
+      job.status = job.pin ? "held" : "done";
+      jobs.setStatus(job.id, job.status);
     }
   }
 
-  const holdCutoff = Date.now() - config.securePrintHoldHours * 3_600_000;
+  const holdCutoff = Date.now() - config.holdHours * 3_600_000;
   return rows.map((j) => {
     const expired = j.status === "held" && j.created_at < holdCutoff;
     return {
@@ -50,32 +45,15 @@ export async function recentJobs(userId: string, limit: number): Promise<JobView
       color: j.color === 1,
       pageRange: j.page_range,
       status: expired ? "sent" : j.status,
-      error: j.error,
       pin: expired ? null : j.pin,
       createdAt: j.created_at,
     };
   });
 }
 
-/** Deletes uploads that were never printed. Cheap enough to call on every upload. */
-export async function cleanupExpiredUploads() {
-  const cutoff = Date.now() - config.uploadTtlMinutes * 60_000;
-  for (const upload of uploads.expired(cutoff)) {
-    await fs.rm(upload.pdf_path, { force: true });
+export async function deleteOldUploads() {
+  for (const upload of uploads.olderThan(Date.now() - config.uploadTtlMinutes * 60_000)) {
+    await fs.rm(upload.path, { force: true });
     uploads.delete(upload.id);
   }
-}
-
-/** Cancels a job in CUPS and marks it cancelled. Returns false if CUPS refused. */
-export async function cancelJob(job: Job): Promise<boolean> {
-  if (job.cups_job_id) {
-    try {
-      await cancel(job.cups_job_id);
-    } catch (err) {
-      console.error("Cancel failed", err);
-      return false;
-    }
-  }
-  jobs.setStatus(job.id, "cancelled");
-  return true;
 }

@@ -1,16 +1,16 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import type { Job } from "@/components/job-history";
 import { StatusDot } from "@/components/ui";
+import type { JobView } from "@/lib/jobs";
 
 type Printer = { online: boolean; message: string };
 
 type JobsState = {
-  jobs: Job[] | null;
+  jobs: JobView[] | null;
   /** Jobs currently animating out after being hidden. */
   leaving: ReadonlySet<number>;
-  /** Hides a job right away and tells the server in the background. Returns an error message on failure. */
+  /** Hides a job right away and tells the server afterwards. Resolves to an error message, if any. */
   hide: (id: number) => Promise<string | null>;
   printer: Printer | null;
   hasMore: boolean;
@@ -19,20 +19,20 @@ type JobsState = {
 };
 
 const PAGE_SIZE = 10;
-/** Matches the duration of the leave animation (duration-200). */
-const LEAVE_MS = 200;
+const LEAVE_MS = 200; // the leave animation's duration
 
-function withId(set: ReadonlySet<number>, id: number, present: boolean) {
+const JobsContext = createContext<JobsState | null>(null);
+
+function toggled(set: ReadonlySet<number>, id: number, on: boolean) {
   const next = new Set(set);
-  if (present) next.add(id);
+  if (on) next.add(id);
   else next.delete(id);
   return next;
 }
-const JobsContext = createContext<JobsState | null>(null);
 
-/** Polls the user's jobs and the printer status once for the whole page. */
+/** Polls the user's jobs and the printer status for the whole page. */
 export function JobsProvider({ children }: { children: ReactNode }) {
-  const [jobs, setJobs] = useState<Job[] | null>(null);
+  const [jobs, setJobs] = useState<JobView[] | null>(null);
   const [printer, setPrinter] = useState<Printer | null>(null);
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [hasMore, setHasMore] = useState(false);
@@ -40,7 +40,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
 
   const refresh = useCallback(async () => {
-    // Ask for one extra job to know whether there are more.
+    // One extra tells us whether there are more.
     const res = await fetch(`/api/jobs?limit=${limit + 1}`, { cache: "no-store" }).catch(() => null);
     if (!res?.ok) return;
     const body = await res.json();
@@ -49,42 +49,37 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     setPrinter(body.printer);
   }, [limit]);
 
-  const hide = useCallback(
-    async (id: number) => {
-      setLeaving((s) => withId(s, id, true));
-      const removed = new Promise((r) => setTimeout(r, LEAVE_MS)).then(() => {
-        setHidden((s) => withId(s, id, true));
-        setLeaving((s) => withId(s, id, false));
-      });
-      const res = await fetch(`/api/jobs/${id}/hide`, { method: "POST" }).catch(() => null);
-      await removed;
-      if (res?.ok) return null;
-      // Put it back.
-      setHidden((s) => withId(s, id, false));
-      return (await res?.json().catch(() => null))?.error ?? "Utskriften kunde inte döljas.";
-    },
-    [],
-  );
+  const hide = useCallback(async (id: number) => {
+    setLeaving((s) => toggled(s, id, true));
+    const animation = new Promise((resolve) => setTimeout(resolve, LEAVE_MS)).then(() => {
+      setHidden((s) => toggled(s, id, true));
+      setLeaving((s) => toggled(s, id, false));
+    });
+    const res = await fetch(`/api/jobs/${id}/hide`, { method: "POST" }).catch(() => null);
+    await animation;
+    if (res?.ok) return null;
+    setHidden((s) => toggled(s, id, false));
+    return (await res?.json().catch(() => null))?.error ?? "Utskriften kunde inte döljas.";
+  }, []);
 
-  const pending = jobs?.some((j) => j.status === "queued" || j.status === "printing");
+  const sending = jobs?.some((j) => j.status === "queued");
 
   useEffect(() => {
-    // refresh() only sets state after its fetch resolves.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- state is only set after the fetch
     refresh();
-    const timer = setInterval(refresh, pending ? 3_000 : 15_000);
+    const timer = setInterval(refresh, sending ? 3_000 : 15_000);
     return () => clearInterval(timer);
-  }, [refresh, pending]);
+  }, [refresh, sending]);
 
   return (
     <JobsContext.Provider
       value={{
-        jobs: jobs?.filter((j) => !hidden.has(j.id)) ?? null,
+        jobs: jobs && jobs.filter((j) => !hidden.has(j.id)),
         leaving,
         hide,
         printer,
         hasMore,
-        showMore: () => setLimit((l) => l + PAGE_SIZE * 2),
+        showMore: () => setLimit((l) => l + 2 * PAGE_SIZE),
         refresh,
       }}
     >
@@ -93,13 +88,10 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useJobs(): JobsState {
-  const state = useContext(JobsContext);
-  if (!state) throw new Error("useJobs must be used inside <JobsProvider>");
-  return state;
+export function useJobs() {
+  return useContext(JobsContext)!;
 }
 
-/** "● Skrivaren är redo" in the header. */
 export function PrinterStatus() {
   const { printer } = useJobs();
   if (!printer) return null;
