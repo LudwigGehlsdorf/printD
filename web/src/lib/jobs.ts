@@ -12,8 +12,8 @@ export type JobView = {
   duplex: boolean;
   color: boolean;
   pageRange: string | null;
-  /** "sent": held for longer than the printer keeps Secure Print jobs. */
-  status: JobStatus | "sent";
+  status: JobStatus;
+  /** Only while the printer may still hold the job. */
   pin: string | null;
   createdAt: number;
 };
@@ -34,21 +34,18 @@ export async function recentJobs(userId: string, limit: number): Promise<JobView
   }
 
   const holdCutoff = Date.now() - config.holdHours * 3_600_000;
-  return rows.map((j) => {
-    const expired = j.status === "held" && j.created_at < holdCutoff;
-    return {
-      id: j.id,
-      fileName: j.file_name,
-      pages: j.pages,
-      copies: j.copies,
-      duplex: j.duplex === 1,
-      color: j.color === 1,
-      pageRange: j.page_range,
-      status: expired ? "sent" : j.status,
-      pin: expired ? null : j.pin,
-      createdAt: j.created_at,
-    };
-  });
+  return rows.map((j) => ({
+    id: j.id,
+    fileName: j.file_name,
+    pages: j.pages,
+    copies: j.copies,
+    duplex: j.duplex === 1,
+    color: j.color === 1,
+    pageRange: j.page_range,
+    status: j.status,
+    pin: j.created_at < holdCutoff ? null : j.pin,
+    createdAt: j.created_at,
+  }));
 }
 
 export async function deleteOldUploads() {

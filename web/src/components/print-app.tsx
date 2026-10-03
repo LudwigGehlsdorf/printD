@@ -99,7 +99,7 @@ export function PrintApp({
   }
 
   const dragging = useWindowDrop(stage.kind !== "uploading" && stage.kind !== "printing", upload);
-  const waiting = jobs?.filter((j) => j.status === "held") ?? null;
+  const waiting = jobs?.filter((j) => j.status === "held" && j.pin) ?? null;
   const shownPin = stage.kind === "released" ? stage.released.pin : null;
 
   return (

@@ -8,7 +8,6 @@ const STATUS: Record<JobView["status"], { label: string; tone: Tone }> = {
   queued: { label: "Skickas", tone: "warning" },
   // We can't see when a Secure Print job is released, so reaching the printer is the end.
   held: { label: "Skickad till skrivaren", tone: "success" },
-  sent: { label: "Skickad till skrivaren", tone: "success" },
   done: { label: "Klar", tone: "success" },
   cancelled: { label: "Avbruten", tone: "muted" },
   failed: { label: "Misslyckades", tone: "error" },
