@@ -10,13 +10,13 @@ Upload a document, check the preview, pick your settings and collect it at the p
 
 ---
 
-printD is a small self-hosted print server for a shared office printer. Members log in with
-their D-sektionen account (Authentik), upload a file and print it. Every job is held in the
-printer with Canon's *Secure Print* until its owner enters a PIN on the printer's screen, so
-nothing is left lying in the tray and nothing prints unless someone is standing there.
+printD is a simple print server for the printer of [D-sektionen](https://dsek.se), the
+computer science and engineering guild at LTH. Members log in with their D-sektionen
+account, upload a file and print it. Every job waits in the printer until its owner enters a
+PIN on the printer's screen, so nothing is left lying in the tray.
 
-It is built for the Canon i-SENSYS MF744Cdw, but works with any printer that has a CUPS
-driver (without Secure Print, jobs simply print right away).
+It runs on a Raspberry Pi connected to the guild's Canon i-SENSYS MF744Cdw, but works with
+any printer that has a CUPS driver (without Secure Print, jobs simply print right away).
 
 ## Features
 
