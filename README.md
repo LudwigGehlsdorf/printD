@@ -1,178 +1,330 @@
+<div align="center">
+
 # printD
 
-*Skriv ut på D-sektionens skrivare – sounds like "printed".*
+**Print from your browser to D-sektionen's printer.**
 
-A small web app that lets members upload a document and print it on the office
-Canon i-SENSYS MF744Cdw. It runs on a Raspberry Pi 4 connected to the printer by USB;
-anyone with a D-sektionen (Authentik) account can print, and every job is logged under
-that account. Access can be narrowed to specific Authentik groups with
-`PRINT_ALLOWED_GROUPS`.
+Upload a document, check the preview, pick your settings and collect it at the printer with a PIN.
+
+</div>
+
+---
+
+printD is a small self-hosted print server for a shared office printer. Members log in with
+their D-sektionen account (Authentik), upload a file and print it. Every job is held in the
+printer with Canon's *Secure Print* until its owner enters a PIN on the printer's screen, so
+nothing is left lying in the tray and nothing prints unless someone is standing there.
+
+It is built for the Canon i-SENSYS MF744Cdw, but works with any printer that has a CUPS
+driver (without Secure Print, jobs simply print right away).
+
+## Features
+
+- **Log in with Authentik:** anyone with an account can print, or limit it to certain groups.
+- **Upload almost anything:** PDF; JPEG, PNG, WebP, GIF and TIFF images; Word, Excel,
+  PowerPoint, OpenDocument and plain-text files (converted with LibreOffice).
+- **See before you print:** page thumbnails; click a page to skip it.
+- **Print settings:** copies, colour or black & white, single- or double-sided.
+- **Image layout with a live preview:** fit, fill (crop) or original size; orientation;
+  margins; 1, 2 or 4 per sheet; drag the image to position it. The preview uses the same
+  layout code as the printed PDF, so what you see is what you get.
+- **Secure Print:** a random PIN per job, shown on screen and in your job list.
+- **Print log:** every job is recorded with who printed what and when. Users can cancel
+  queued jobs and hide old ones from their list.
+- **Phone friendly:** works on any screen size, in light and dark mode. Swedish interface
+  styled after [dsek.se](https://dsek.se).
+
+## How it works
 
 ```
-Browser ──HTTPS──▶ Raspberry Pi (Next.js app + CUPS) ──USB──▶ Canon MF744Cdw
-                         │
-                         └──OIDC──▶ Authentik
+                 HTTPS                        USB
+  Browser ─────────────────▶ printD server ─────────▶ Printer
+                              (Next.js + CUPS)
+                                   │
+                                   └── OIDC login ──▶ Authentik
 ```
 
-- **Upload**: PDF, JPG/PNG, Word/Excel/PowerPoint/OpenDocument, text. Everything is
-  converted to PDF first (images with pdf-lib, documents with LibreOffice) so the user
-  can preview the result and see the page count before printing.
-- **Options**: copies, colour / black & white, single / double-sided, page range.
-- **Images** (JPEG, PNG, WebP, GIF, TIFF) get a live A4 preview with layout controls: fit,
-  fill (crop), original size (from the image's DPI) or a custom size; orientation; margins;
-  1, 2 or 4 per sheet; and drag to position/crop. The preview and the printed PDF use the
-  same layout function (`web/src/lib/image-layout.ts`), so what you see is what prints.
-  Phone photos are rotated upright on upload (EXIF orientation) with `sharp`.
-- **Secure Print**: jobs are held on the printer until the user enters a PIN on its
-  touchscreen (Canon's built-in Secure Print). The app generates a random PIN per job and
-  shows it after printing, so nothing comes out unless someone is standing at the printer.
-- **Log**: every job is stored in SQLite (`data/print.db`, table `jobs`) with who printed
-  what and when. Users see their own recent jobs and can cancel queued ones.
+1. The browser uploads a file. The server converts it to PDF (images are kept as images until
+   printing, so their layout can still be changed).
+2. The user picks settings in the browser. Thumbnails and the image preview are drawn in the
+   browser, so the server does little work.
+3. On *Skriv ut*, the server builds the final PDF itself (only the selected pages, images laid
+   out on A4) and hands it to CUPS together with a random Secure Print PIN.
+4. Canon's driver sends the job to the printer, which holds it until the PIN is entered.
 
-The app lives in [`web/`](web).
+**Built with** [Next.js](https://nextjs.org), [Auth.js](https://authjs.dev),
+[pdf-lib](https://pdf-lib.js.org), [pdf.js](https://mozilla.github.io/pdf.js/),
+[sharp](https://sharp.pixelplumbing.com), SQLite, CUPS, LibreOffice and
+[Caddy](https://caddyserver.com).
 
-## Running on a Mac
+## Getting started
 
-```sh
-cd web
-pnpm install
-cp .env.example .env.local    # then edit it
-pnpm dev                      # http://localhost:3000
-```
+Run printD locally to try it out or work on it. By default it runs in *test mode*: nothing
+is sent to a printer, and each job's PDF and settings are saved to `web/data/dry-run/` instead.
 
-For a first try, set `DEV_FAKE_USER=1` in `.env.local` to skip Authentik. With
-`PRINT_MODE=dry-run` (the default) nothing is printed; each job's PDF and options are
-written to `web/data/dry-run/`.
+### Prerequisites
 
-To convert Office documents, install LibreOffice (`brew install --cask libreoffice`).
+- [Node.js](https://nodejs.org) 20 or newer
+- [pnpm](https://pnpm.io) (`corepack enable` sets it up)
+- Optional: [LibreOffice](https://www.libreoffice.org), to convert Office documents
+- Optional: CUPS with a printer queue, to print for real (see [Printer setup](#printer-setup))
 
-To print for real from the Mac, plug the printer in, add it in System Settings →
-Printers & Scanners, find its queue name with `lpstat -p`, and set
-`PRINT_MODE=cups` and `PRINTER_NAME=<queue name>`.
+### Quick start
+
+1. Clone the repository and install the dependencies:
+
+   ```sh
+   git clone <repository URL> printd
+   cd printd/web
+   pnpm install
+   ```
+
+2. Create your local settings file:
+
+   ```sh
+   cp .env.example .env.local
+   ```
+
+   It already points at D-sektionen's public development login, which accepts
+   `http://localhost` only. To skip logging in altogether, uncomment `DEV_FAKE_USER=1`.
+
+3. Start the development server:
+
+   ```sh
+   pnpm dev
+   ```
+
+4. Open <http://localhost:3000>, log in and print something. With `PRINT_MODE=dry-run`
+   the result ends up in `web/data/dry-run/`.
+
+To print for real, set up a printer queue as described in [Printer setup](#printer-setup)
+and set `PRINT_MODE=cups` and `PRINTER_NAME` in `.env.local`.
+
+## Configuration
+
+printD is configured with environment variables: `web/.env.local` during development, and
+`/etc/printd/printd.env` in production (see [`deploy/printd.env.example`](deploy/printd.env.example)).
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `AUTH_SECRET` | – | Random secret for login sessions. Generate with `openssl rand -base64 33`. |
+| `AUTH_AUTHENTIK_ID` | – | Client ID of the Authentik provider. |
+| `AUTH_AUTHENTIK_SECRET` | – | Client secret (empty for public clients). |
+| `AUTH_AUTHENTIK_ISSUER` | – | The provider's *OpenID Configuration Issuer* URL. |
+| `AUTH_TRUST_HOST` | – | Set to `true` when running behind a reverse proxy. |
+| `PRINT_ALLOWED_GROUPS` | *(empty)* | Comma-separated Authentik groups that may print; subgroups count (`dsek.infu` includes `dsek.infu.mdlm`). Empty: every account. |
+| `PRINT_MODE` | `dry-run` | `cups` to print, `dry-run` to save PDFs to `DATA_DIR/dry-run` instead. |
+| `PRINTER_NAME` | `Canon_MF744Cdw` | CUPS queue name (`lpstat -p` lists them). |
+| `PRINTER_DRIVER` | `ufr2` | `ufr2` for Canon's UFR II driver, `ipp` for a driverless (IPP Everywhere / AirPrint) queue. |
+| `SECURE_PRINT` | `true` | Hold jobs on the printer until the PIN is entered. Needs `PRINTER_DRIVER=ufr2`. |
+| `SECURE_PRINT_PIN_LENGTH` | `4` | PIN length, 4–7 digits. |
+| `SECURE_PRINT_HOLD_HOURS` | `4` | How long a PIN is shown after sending. Match the printer's Secure Print deletion time. |
+| `SECURE_PRINT_PIN_ENCODING` | *depends* | How the PIN is passed to Canon's driver: `base64` or `plain`. Defaults to what the driver build for the current platform expects. |
+| `MAX_UPLOAD_MB` | `50` | Largest accepted upload. |
+| `MAX_COPIES` | `50` | Most copies per job. |
+| `UPLOAD_TTL_MINUTES` | `60` | Uploads that are never printed are deleted after this. |
+| `DATA_DIR` | `./data` | Database, uploads and test-mode output. |
+| `SOFFICE_PATH` | *auto* | Path to LibreOffice's `soffice`, if it is not found automatically. |
+| `DEV_FAKE_USER` | – | `1` skips login during development. Ignored in production. |
 
 ## Authentik setup
 
-1. **Applications → Providers → Create → OAuth2/OpenID Provider**
-   - Client type: Confidential
-   - Redirect URI: `https://<print host>/api/auth/callback/authentik`
-     (add `http://localhost:3000/api/auth/callback/authentik` for local testing)
-   - Scopes: keep the defaults (`openid`, `email`, `profile`). The default profile
-     mapping includes the user's `groups`, which the app checks.
-2. **Applications → Applications → Create**, link it to the provider.
-3. If you restrict access to certain groups, you can also bind them to the application
-   (Policy / Group / User Bindings) so others are stopped at Authentik too. The app
-   checks `PRINT_ALLOWED_GROUPS` itself regardless.
-4. Copy the Client ID, Client Secret and the provider's *OpenID Configuration Issuer*
-   into `AUTH_AUTHENTIK_ID`, `AUTH_AUTHENTIK_SECRET` and `AUTH_AUTHENTIK_ISSUER`, and set
-   optionally `PRINT_ALLOWED_GROUPS` (empty = every account may print).
+printD logs users in with OpenID Connect. In Authentik:
 
-## Secure Print and the Canon driver
+1. Go to **Applications → Providers → Create** and choose **OAuth2/OpenID Provider**.
+   - **Client type:** Confidential
+   - **Redirect URI:** `https://<your printD host>/api/auth/callback/authentik`
+   - **Scopes:** keep the defaults (`openid`, `email`, `profile`). The default profile
+     mapping includes the user's `groups`, which printD uses for `PRINT_ALLOWED_GROUPS`.
+2. Go to **Applications → Applications → Create** and link it to the new provider.
+3. Copy the provider's **Client ID**, **Client Secret** and **OpenID Configuration Issuer**
+   into `AUTH_AUTHENTIK_ID`, `AUTH_AUTHENTIK_SECRET` and `AUTH_AUTHENTIK_ISSUER`.
+4. *Optional:* if only some groups may print, bind them to the application as well, so others
+   are stopped at Authentik already. printD checks `PRINT_ALLOWED_GROUPS` either way.
 
-Secure Print needs Canon's **UFR II driver** (Linux: "UFR II/UFRII LT Printer Driver for
-Linux", ARM64 builds included; macOS: "UFR II/UFRII LT Printer Driver & Utilities for Mac").
-The printer also speaks driverless IPP over USB (AirPrint), but that path cannot carry a PIN:
-the printer does not support IPP `job-password` or job hold/release.
+The name shown next to a job on the printer's screen is the user's Authentik username.
 
-**Tested on macOS (2026-10-03):** a job sent with the options below shows up under
-*Secure Print* on the printer, under the user name, and is released with the PIN.
+## Printer setup
+
+printD prints through [CUPS](https://openprinting.github.io/cups/). Secure Print needs
+**Canon's UFR II driver** ("UFR II/UFRII LT Printer Driver", available for Linux including
+ARM64, and for macOS); driverless queues cannot carry a PIN. The production setup script
+installs the driver and creates the queue automatically. To do it by hand:
+
+1. Install Canon's UFR II driver for your platform from Canon's support site.
+2. Find the printer's USB address:
+
+   ```sh
+   lpinfo -v | grep -i canon
+   # direct usb://Canon/MF742C/744C%20UFR%20II?serial=…
+   ```
+
+3. Create a queue with Canon's PPD for the MF742C/744C and **enable Secure Print** on it:
+
+   ```sh
+   sudo lpadmin -p printd -E -v "<usb address>" -P <path to the MF742C/744C PPD> \
+     -o printer-is-shared=false
+   lpoptions -p printd -l | grep -i secur      # if a Secure Print option is listed:
+   sudo lpadmin -p printd -o CNUseSecuredPrint=True
+   ```
+
+4. Make sure no other program holds the printer's USB connection (see
+   [Troubleshooting](#troubleshooting)).
+5. Set `PRINTER_NAME=printd`, `PRINTER_DRIVER=ufr2` and `SECURE_PRINT=true`.
+
+For each job, printD sends these Canon options with `lp`:
 
 | Option | Value |
 | --- | --- |
 | `CNColorMode` | `color` / `mono` |
-| `CNDuplex` | `DuplexFront` / `None` (macOS PPD; defaults to 2-sided). Linux PPD uses `sides`/`Duplex`. |
+| `CNDuplex`, `sides` | double- or single-sided (driver builds use one or the other) |
 | `CNJobExecMode` | `secured` |
-| `CNUsrName` | the user's Authentik username (shown on the printer's screen) |
-| `CNDocName` | the file name, ASCII only |
-| `CNSecuredPrint` | the PIN, up to 7 digits. **Plain on macOS** (tested); base64 on Linux per the driver source (untested). |
+| `CNUsrName` | the user's username, shown on the printer's screen |
+| `CNDocName` | the file name (ASCII only) |
+| `CNSecuredPrint` | the PIN (see `SECURE_PRINT_PIN_ENCODING`) |
 
-Setting up the queue:
+## Deployment
 
-- Secure Print must be enabled on the queue, or the driver refuses held jobs:
-  `lpadmin -p <queue> ... -o CNUseSecuredPrint=True`
-- macOS opens its own AirPrint-over-USB connection to the printer whenever it is plugged in
-  and recreates an AirPrint queue for it. While that is active, Canon's USB backend reports
-  "The printer is offline". Pausing the AirPrint queue (`cupsdisable Canon_MF742C_744C`) and
-  replugging the cable made it work. On the Pi, do not install `ipp-usb`.
+printD runs well on a small server such as a **Raspberry Pi 4 (2 GB RAM or more)** connected
+to the printer by USB. The scripts in [`deploy/`](deploy) set up a Debian-based system (for
+example 64-bit Raspberry Pi OS) from scratch:
 
-Driver quirks:
-
-- Canon's PPD sends PDFs straight to its own filter (`capdftopdl`), skipping CUPS's
-  `pdftopdf`, so CUPS options like `page-ranges` are ignored. The app therefore builds the
-  final PDF itself: only the selected pages (`selectPages`), and images laid out on A4
-  (`imageToPdf`). Tested on the real printer (2026-10-03).
-
-Limitations:
-
-- Once the job data has reached the printer, CUPS marks it completed. The printer does not
-  report when a held job is released, and UFR II jobs do not appear in its IPP job list, so
-  the app's final status is "Skickad till skrivaren". PINs are listed for
-  `SECURE_PRINT_HOLD_HOURS` after sending.
-- Held jobs cannot be deleted from the app; they stay in the printer until they expire or are
-  deleted on its screen.
-- Still to check: how long the printer keeps held jobs (set `SECURE_PRINT_HOLD_HOURS` to match).
-
-## Raspberry Pi
-
-Runs on a Raspberry Pi 4 (2 GB RAM or more) with **Raspberry Pi OS 64-bit** (Bookworm or
-newer), connected to the internet by Ethernet and to the printer by USB. Everything is in
-[`deploy/`](deploy):
-
-| File | What it is |
+| File | Purpose |
 | --- | --- |
-| `setup-pi.sh` | One-time setup; safe to run again |
-| `update.sh` | Pulls the latest commit, rebuilds and restarts |
-| `printd.env.example` | Production settings template, installed as `/etc/printd/printd.env` |
-| `printd.service` | systemd service: runs the app as user `printd` on `127.0.0.1:3000` |
-| `Caddyfile` | HTTPS reverse proxy in front of the app |
+| [`setup-pi.sh`](deploy/setup-pi.sh) | One-time setup. Safe to run again: it only does what is still missing. |
+| [`update.sh`](deploy/update.sh) | Pulls the latest version, rebuilds and restarts. |
+| [`printd.env.example`](deploy/printd.env.example) | Production settings, installed as `/etc/printd/printd.env`. |
+| [`printd.service`](deploy/printd.service) | systemd service: runs printD as user `printd` on `127.0.0.1:3000`. |
+| [`Caddyfile`](deploy/Caddyfile) | HTTPS reverse proxy with automatic certificates. |
 
-### Setting it up
+### 1. Prepare the server
 
-1. Flash Raspberry Pi OS Lite (64-bit), enable SSH, connect Ethernet and the printer's USB
-   cable, and turn the printer on.
-2. On the Pi:
+Install a 64-bit Debian-based OS, enable SSH, connect the server to the network and the
+printer by USB, and turn the printer on.
 
-   ```sh
-   sudo apt-get install -y git
-   sudo git clone <repository URL> /opt/printd
-   sudo /opt/printd/deploy/setup-pi.sh            # add the hostname once it exists
-   ```
-
-   The script:
-   - installs CUPS, LibreOffice, fonts, Node.js 22 and Caddy
-   - installs Canon's UFR II driver (checksum-verified)
-   - blocks `ipp-usb`, which would otherwise take over the USB connection
-   - creates the `printd` user, `/var/lib/printd` and `/etc/printd/printd.env` (with a fresh `AUTH_SECRET`)
-   - creates the CUPS queue `printd`
-   - builds the app and starts the service
-
-3. Fill in the Authentik values in `/etc/printd/printd.env`, then
-   `sudo systemctl restart printd`.
-4. When the Pi has a hostname pointing at it (ports 80 and 443 open), run the script again with
-   it, e.g. `sudo /opt/printd/deploy/setup-pi.sh print.dsek.se`. Caddy then fetches an HTTPS
-   certificate automatically.
-
-### Testing before there is a hostname
-
-Use the public dev client (as in `web/.env.example`) in `/etc/printd/printd.env`, and reach
-the app through an SSH tunnel so it is served on `localhost`, which the dev client accepts:
+### 2. Run the setup script
 
 ```sh
-ssh -L 3000:localhost:3000 <user>@<pi-address>
-# then open http://localhost:3000 on your own computer
+sudo apt-get install -y git
+sudo git clone <repository URL> /opt/printd
+sudo /opt/printd/deploy/setup-pi.sh
 ```
 
-### First print on the Pi
+The script:
 
-Things only the real Linux setup can confirm:
+- installs CUPS, LibreOffice, fonts, Node.js 22 and Caddy
+- downloads Canon's UFR II driver and verifies its checksum
+- blocks `ipp-usb`, which would otherwise take over the printer's USB connection
+- creates the `printd` user, the data directory `/var/lib/printd` and the settings file
+  `/etc/printd/printd.env` with a fresh `AUTH_SECRET`
+- creates the CUPS queue `printd`, if the printer is connected
+- builds printD and starts it as a service
 
-- A job appears under *Secure Print* on the printer and is released with its PIN. If it shows
-  up but the PIN is rejected, set `SECURE_PRINT_PIN_ENCODING=plain`.
-- Secure Print may have to be enabled on the queue, as on macOS: check
-  `lpoptions -p printd -l` for a Secure Print option.
-- Double-sided and black & white come out right.
+### 3. Configure login
 
-### Day to day
+Create the Authentik provider (see [Authentik setup](#authentik-setup)) and fill in the
+`AUTH_AUTHENTIK_*` values:
 
-- **Logs:** `journalctl -u printd -f`. CUPS: `/var/log/cups/error_log`.
-- **Update:** `sudo /opt/printd/deploy/update.sh`
-- **The print log** is the SQLite database `/var/lib/printd/print.db` (table `jobs`).
+```sh
+sudoedit /etc/printd/printd.env
+sudo systemctl restart printd
+```
+
+### 4. Add a hostname and HTTPS
+
+Point a hostname at the server, open ports 80 and 443 to it, and run the script again with
+the hostname. Caddy fetches a certificate from Let's Encrypt automatically:
+
+```sh
+sudo /opt/printd/deploy/setup-pi.sh print.example.org
+```
+
+> **No hostname yet?** Put the public development login from `web/.env.example` in
+> `/etc/printd/printd.env` and reach printD through an SSH tunnel, so it is served on
+> `localhost`, which that login accepts:
+>
+> ```sh
+> ssh -L 3000:localhost:3000 <user>@<server>
+> # then open http://localhost:3000
+> ```
+
+### 5. Make a test print
+
+Print a page from the website and check that:
+
+- the job appears under **Secure Print** on the printer, under your username, and is
+  released by its PIN
+- skipped pages, double-sided and black & white come out as chosen
+
+### Maintenance
+
+| Task | Command |
+| --- | --- |
+| Update to the latest version | `sudo /opt/printd/deploy/update.sh` |
+| Service status | `systemctl status printd` |
+| Follow the log | `journalctl -u printd -f` |
+| CUPS log | `/var/log/cups/error_log` |
+| Change settings | `sudoedit /etc/printd/printd.env && sudo systemctl restart printd` |
+
+The print log is the SQLite database `/var/lib/printd/print.db` (table `jobs`). Back it up
+like any other file.
+
+## Troubleshooting
+
+**The job stays at "The printer is offline".**
+Another program is holding the printer's USB connection, usually an IPP-over-USB service
+(`ipp-usb` on Linux, or an automatically added AirPrint queue on desktops). Remove `ipp-usb`
+or pause the AirPrint queue (`cupsdisable <queue>`), then unplug and replug the USB cable.
+
+**The job shows up under Secure Print, but the PIN is rejected.**
+The driver expects the PIN in the other format. Switch `SECURE_PRINT_PIN_ENCODING` between
+`base64` and `plain` and restart.
+
+**Jobs print immediately instead of waiting for a PIN.**
+Secure Print is not enabled on the queue. Check `lpoptions -p <queue> -l` and set
+`CNUseSecuredPrint=True` if the option exists. Also check `SECURE_PRINT=true` and
+`PRINTER_DRIVER=ufr2`.
+
+**Word or PowerPoint files fail to upload.**
+LibreOffice is missing or not found. Install it, or set `SOFFICE_PATH`.
+
+**`lp: No such file or directory`.**
+The queue in `PRINTER_NAME` does not exist. List the queues with `lpstat -p`.
+
+## Limitations
+
+- **Pickups can't be tracked.** The printer does not report when a held job is released,
+  so a job's final status is *Skickad till skrivaren* (sent to the printer).
+- **Held jobs can only be deleted at the printer.** printD cannot delete jobs held in the
+  printer's memory; they stay until the printer deletes them or someone does so on its screen.
+- **Canon's driver ignores some CUPS options,** such as page ranges. printD therefore builds
+  the final PDF itself instead of relying on them.
+
+## Project structure
+
+```
+printd/
+├── deploy/                 Production setup: scripts, systemd service, Caddy, settings
+└── web/                    The Next.js app
+    └── src/
+        ├── app/            Pages and API routes (/api/uploads, /api/print, /api/jobs)
+        ├── components/     UI: upload flow, page preview, image layout editor, job list
+        └── lib/
+            ├── convert.ts       File → PDF, page selection, image normalisation
+            ├── image-layout.ts  Image placement, shared by preview and PDF
+            ├── printer.ts       CUPS: submit, status, cancel, Canon options
+            ├── db.ts            SQLite: uploads and the print log
+            └── session.ts       Login and group check
+```
+
+## Development
+
+From `web/`:
+
+| Command | What it does |
+| --- | --- |
+| `pnpm dev` | Development server on <http://localhost:3000> |
+| `pnpm build` | Production build |
+| `pnpm start` | Run the production build |
+| `pnpm lint` | ESLint |
+| `npx tsc --noEmit` | Type check |
