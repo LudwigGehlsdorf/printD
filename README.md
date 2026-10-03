@@ -113,5 +113,66 @@ Limitations:
 
 ## Raspberry Pi
 
-To be written (phase 5): Raspberry Pi OS 64-bit, CUPS with Canon's UFR II driver over USB,
-LibreOffice, a systemd service and Caddy for HTTPS.
+Runs on a Raspberry Pi 4 (2 GB RAM or more) with **Raspberry Pi OS 64-bit** (Bookworm or
+newer), connected to the internet by Ethernet and to the printer by USB. Everything is in
+[`deploy/`](deploy):
+
+| File | What it is |
+| --- | --- |
+| `setup-pi.sh` | One-time setup; safe to run again |
+| `update.sh` | Pulls the latest commit, rebuilds and restarts |
+| `printd.env.example` | Production settings template, installed as `/etc/printd/printd.env` |
+| `printd.service` | systemd service: runs the app as user `printd` on `127.0.0.1:3000` |
+| `Caddyfile` | HTTPS reverse proxy in front of the app |
+
+### Setting it up
+
+1. Flash Raspberry Pi OS Lite (64-bit), enable SSH, connect Ethernet and the printer's USB
+   cable, and turn the printer on.
+2. On the Pi:
+
+   ```sh
+   sudo apt-get install -y git
+   sudo git clone <repository URL> /opt/printd
+   sudo /opt/printd/deploy/setup-pi.sh            # add the hostname once it exists
+   ```
+
+   The script:
+   - installs CUPS, LibreOffice, fonts, Node.js 22 and Caddy
+   - installs Canon's UFR II driver (checksum-verified)
+   - blocks `ipp-usb`, which would otherwise take over the USB connection
+   - creates the `printd` user, `/var/lib/printd` and `/etc/printd/printd.env` (with a fresh `AUTH_SECRET`)
+   - creates the CUPS queue `printd`
+   - builds the app and starts the service
+
+3. Fill in the Authentik values in `/etc/printd/printd.env`, then
+   `sudo systemctl restart printd`.
+4. When the Pi has a hostname pointing at it (ports 80 and 443 open), run the script again with
+   it, e.g. `sudo /opt/printd/deploy/setup-pi.sh print.dsek.se`. Caddy then fetches an HTTPS
+   certificate automatically.
+
+### Testing before there is a hostname
+
+Use the public dev client (as in `web/.env.example`) in `/etc/printd/printd.env`, and reach
+the app through an SSH tunnel so it is served on `localhost`, which the dev client accepts:
+
+```sh
+ssh -L 3000:localhost:3000 <user>@<pi-address>
+# then open http://localhost:3000 on your own computer
+```
+
+### First print on the Pi
+
+Things only the real Linux setup can confirm:
+
+- A job appears under *Secure Print* on the printer and is released with its PIN. If it shows
+  up but the PIN is rejected, set `SECURE_PRINT_PIN_ENCODING=plain`.
+- Secure Print may have to be enabled on the queue, as on macOS: check
+  `lpoptions -p printd -l` for a Secure Print option.
+- Double-sided and black & white come out right.
+
+### Day to day
+
+- **Logs:** `journalctl -u printd -f`. CUPS: `/var/log/cups/error_log`.
+- **Update:** `sudo /opt/printd/deploy/update.sh`
+- **The print log** is the SQLite database `/var/lib/printd/print.db` (table `jobs`).

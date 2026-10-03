@@ -1,0 +1,31 @@
+[Unit]
+Description=printD web app
+After=network-online.target cups.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=printd
+Group=printd
+WorkingDirectory=/opt/printd/web
+EnvironmentFile=/etc/printd/printd.env
+Environment=HOME=/var/lib/printd
+# Only Caddy talks to the app; it is not reachable from the network directly.
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3000
+Restart=on-failure
+RestartSec=5
+
+# Hardening. The app only writes its data directory and talks to CUPS over its socket.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/printd /run/cups
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

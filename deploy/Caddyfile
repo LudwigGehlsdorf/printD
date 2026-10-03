@@ -1,0 +1,13 @@
+# Installed to /etc/caddy/Caddyfile by setup-pi.sh, with PRINTD_HOST replaced by the
+# hostname (e.g. print.dsek.se). With a real hostname Caddy gets an HTTPS certificate from
+# Let's Encrypt automatically; ports 80 and 443 must be reachable from the internet.
+PRINTD_HOST {
+	encode zstd gzip
+
+	# Uploads are limited to 50 MB by the app (MAX_UPLOAD_MB).
+	request_body {
+		max_size 60MB
+	}
+
+	reverse_proxy 127.0.0.1:3000
+}
