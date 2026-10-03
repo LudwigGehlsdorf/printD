@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens copied from the D-sektionen website (github.com/Dsek-LTH/web, src/app.css)
+ * so this app looks like a page on dsek.se. Keep the names in sync with that file.
+ */
+:root {
+  color-scheme: light;
+  --background: oklch(1 0 0);
+  --foreground: oklch(14.1% 0.005 285.823);
+  --muted: oklch(96.7% 0.001 286.375);
+  --muted-background: oklch(98.5% 0 0);
+  --muted-foreground: oklch(44.2% 0.017 285.786);
+  --border: oklch(87.1% 0.006 286.286);
+  --secondary-hover: oklch(96.7% 0.001 286.375);
+  --card: var(--muted-background);
+  --rosa-background: #e74c7c;
+  --rosa-foreground: oklch(1 0 0);
+  --rosa-hover: #d32b68;
+  --rosa-selected: var(--color-rosa-50);
+  --success: oklch(62% 0.15 145);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: oklch(22.771% 0.00577 285.875);
+    --foreground: oklch(90% 0.002 0);
+    --muted: oklch(28% 0.004 0);
+    --muted-background: oklch(20.5% 0.006 285.885);
+    --muted-foreground: oklch(72% 0.006 0);
+    --border: oklch(33% 0.005 0);
+    --secondary-hover: oklch(28% 0.004 0);
+    --rosa-background: #f280a1;
+    --rosa-foreground: oklch(18% 0 0);
+    --rosa-hover: #e74c7c;
+    --rosa-selected: var(--color-rosa-950);
+    --success: oklch(72% 0.14 145);
+  }
+}
+
+@theme inline {
+  --font-display: var(--font-plex-condensed), sans-serif;
+  --font-sans: var(--font-plex-sans), sans-serif;
+  --font-mono: var(--font-jetbrains-mono), monospace;
+
+  /* Where the print page switches from one column to two (document | settings). */
+  --breakpoint-cols: 44rem;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-background: var(--muted-background);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-secondary-hover: var(--secondary-hover);
+  --color-card: var(--card);
+  --color-rosa-background: var(--rosa-background);
+  --color-rosa-foreground: var(--rosa-foreground);
+  --color-rosa-hover: var(--rosa-hover);
+  --color-rosa-selected: var(--rosa-selected);
+  --color-success: var(--success);
+
+  --color-rosa-50: #fef2f5;
+  --color-rosa-100: #fde6eb;
+  --color-rosa-200: #fbd0dc;
+  --color-rosa-300: #f7aabf;
+  --color-rosa-400: #f280a1;
+  --color-rosa-500: #e74c7c;
+  --color-rosa-600: #d32b68;
+  --color-rosa-700: #b21e57;
+  --color-rosa-800: #951c4e;
+  --color-rosa-900: #801b49;
+  --color-rosa-950: #470a24;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-rosa-400/50;
+  }
+
+  body {
+    @apply bg-background text-foreground selection:bg-rosa-400 text-[14px] leading-[20px] selection:text-zinc-50;
+  }
+
+  h1 {
+    @apply font-display text-[40px] leading-[48px] font-semibold tracking-tight sm:text-[48px] sm:leading-[56px];
+  }
+
+  h2 {
+    @apply font-sans text-[20px] leading-[28px] font-semibold tracking-tight;
+  }
+}
