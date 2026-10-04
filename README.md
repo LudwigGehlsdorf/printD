@@ -109,7 +109,8 @@ printD is configured with environment variables: `.env.local` during development
 | `AUTH_AUTHENTIK_ID` | – | Client ID of the Authentik provider. |
 | `AUTH_AUTHENTIK_SECRET` | – | Client secret (empty for public clients). |
 | `AUTH_AUTHENTIK_ISSUER` | – | The provider's *OpenID Configuration Issuer* URL. |
-| `AUTH_TRUST_HOST` | – | Set to `true` when running behind a reverse proxy. |
+| `AUTH_URL` | – | The address users open printD at, e.g. `https://print.example.org:8080`. Required in production: login redirects are built from it. |
+| `AUTH_TRUST_HOST` | – | Set to `true` to build login redirects from the request instead (development, or behind a reverse proxy). |
 | `PRINT_ALLOWED_GROUPS` | *(empty)* | Comma-separated Authentik groups that may print; subgroups count (`dsek.infu` includes `dsek.infu.mdlm`). Empty: every account. |
 | `PRINT_MODE` | `dry-run` | `cups` to print, `dry-run` to save PDFs to `DATA_DIR/dry-run` instead. |
 | `PRINTER_NAME` | `Canon_MF744Cdw` | CUPS queue name (`lpstat -p` lists them). |

@@ -82,7 +82,9 @@ chown -R printd:printd "$REPO_DIR"
 step "Writing $ENV_FILE"
 install -d -m 750 -g printd /etc/printd
 if [[ ! -f "$ENV_FILE" ]]; then
-  sed "s|^AUTH_SECRET=.*|AUTH_SECRET=$(openssl rand -base64 33)|" "$REPO_DIR/deploy/printd.env.example" >"$ENV_FILE"
+  sed -e "s|^AUTH_SECRET=.*|AUTH_SECRET=$(openssl rand -base64 33)|" \
+    -e "s|^AUTH_URL=.*|AUTH_URL=https://${HOST:-$(hostname).local}:8080|" \
+    "$REPO_DIR/deploy/printd.env.example" >"$ENV_FILE"
   note "Created. Fill in the AUTH_AUTHENTIK_* values before logging in."
 else
   note "Exists, leaving it as it is."
