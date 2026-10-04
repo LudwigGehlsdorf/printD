@@ -15,11 +15,6 @@ export const config = {
   printerName: env("PRINTER_NAME", "Canon_MF744Cdw"),
   driver: env("PRINTER_DRIVER", "ufr2") as "ufr2" | "ipp",
   securePrint: env("SECURE_PRINT", "true") === "true",
-  // Canon's driver builds disagree: the Linux one decodes the PIN as base64, the macOS one
-  // takes it as is (see cngplp/cngplpmod/execjob.c in the driver source).
-  pinEncoding: env("SECURE_PRINT_PIN_ENCODING", process.platform === "darwin" ? "plain" : "base64") as
-    | "plain"
-    | "base64",
   pinLength: Number(env("SECURE_PRINT_PIN_LENGTH", "4")),
   holdHours: Number(env("SECURE_PRINT_HOLD_HOURS", "4")),
   maxUploadBytes: Number(env("MAX_UPLOAD_MB", "50")) * 1024 * 1024,

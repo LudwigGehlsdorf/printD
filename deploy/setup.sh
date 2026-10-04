@@ -77,6 +77,9 @@ fi
 step "Creating the printd user and directories"
 id printd >/dev/null 2>&1 || useradd --system --home-dir "$DATA_DIR" --shell /usr/sbin/nologin printd
 install -d -o printd -g printd -m 750 "$DATA_DIR"
+# printD writes each Secure Print job's PIN here for Canon's driver, which reads it as lp.
+# The driver package leaves it world-writable.
+install -d -o printd -g lp -m 2750 /etc/cngplp2/account
 chown -R printd:printd "$REPO_DIR"
 
 step "Writing $ENV_FILE"

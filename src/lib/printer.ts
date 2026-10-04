@@ -8,6 +8,10 @@ import { config } from "@/lib/config";
 
 const run = promisify(execFile);
 const dryRun = config.printMode === "dry-run";
+// Canon's Linux driver ignores the PIN in lp options and reads it from
+// <dir>/<CUPS job user>.conf instead (written by its own cnjatool2 otherwise).
+const accountDir = "/etc/cngplp2/account";
+const useAccountFile = config.driver === "ufr2" && process.platform !== "darwin";
 
 export type PrintOptions = {
   copies: number;
@@ -31,6 +35,14 @@ export async function submit(pdfPath: string, title: string, options: PrintOptio
     return id;
   }
 
+  if (options.securePrint && useAccountFile) {
+    await removeFinishedAccounts();
+    // A user name of its own per job, so concurrent jobs can't pick up each other's PIN.
+    const account = `printd-${crypto.randomBytes(6).toString("hex")}`;
+    await writeAccount(account, options.securePrint);
+    args.push("-U", account);
+  }
+
   // Prints "request id is <queue>-42 (1 file(s))".
   const { stdout } = await run("lp", [...args, "--", pdfPath]);
   return stdout.match(/request id is (\S+)/)![1];
@@ -49,15 +61,35 @@ function lpArgs(title: string, { copies, duplex, color, securePrint }: PrintOpti
   // CNDuplex; each ignores the other.
   args.push("-o", `CNColorMode=${color ? "color" : "mono"}`, "-o", `CNDuplex=${duplex ? "DuplexFront" : "None"}`);
   if (securePrint) {
-    const pin = config.pinEncoding === "base64" ? Buffer.from(securePrint.pin).toString("base64") : securePrint.pin;
-    args.push(
-      "-o", "CNJobExecMode=secured",
-      "-o", `CNUsrName=${panelText(securePrint.username, 32)}`,
-      "-o", `CNDocName=${panelText(title, 64)}`,
-      "-o", `CNSecuredPrint=${pin}`,
-    );
+    args.push("-o", "CNJobExecMode=secured", "-o", `CNDocName=${panelText(title, 64)}`);
+    if (!useAccountFile) {
+      args.push("-o", `CNUsrName=${panelText(securePrint.username, 32)}`, "-o", `CNSecuredPrint=${securePrint.pin}`);
+    }
   }
   return args;
+}
+
+async function writeAccount(account: string, { pin, username }: { pin: string; username: string }) {
+  const b64 = (text: string) => Buffer.from(text).toString("base64");
+  const queue = config.printerName;
+  // The directory is setgid lp, so the driver's filter (running as lp) can read the file.
+  await fs.writeFile(
+    path.join(accountDir, `${account}.conf`),
+    `<${queue}>\ns_id=${b64(panelText(username, 32))}\ns_password=${b64(pin)}\n</${queue}>\n`,
+    { mode: 0o640 },
+  );
+}
+
+/** Deletes the account files of jobs CUPS has finished sending. */
+async function removeFinishedAccounts() {
+  const owners = new Set((await queuedJobs()).map((j) => j.owner));
+  // Skips fresh files: their job may not have reached CUPS yet.
+  const cutoff = Date.now() - 60_000;
+  for (const name of await fs.readdir(accountDir)) {
+    if (!name.startsWith("printd-") || owners.has(name.replace(/\.conf$/, ""))) continue;
+    const file = path.join(accountDir, name);
+    if ((await fs.stat(file)).mtimeMs < cutoff) await fs.rm(file, { force: true });
+  }
 }
 
 /** The printer's screen only shows ASCII: "Jönsson" → "Jonsson". */
@@ -69,15 +101,31 @@ function panelText(text: string, maxLength: number) {
     .slice(0, maxLength);
 }
 
+/** Jobs CUPS has not finished sending yet. */
+async function queuedJobs() {
+  // Lines look like "<queue>-42  <owner>  3072  <date>".
+  const { stdout } = await run("lpstat", ["-o", config.printerName]);
+  return stdout
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [id, owner] = line.split(/\s+/);
+      return { id, owner };
+    });
+}
+
 /** Ids of jobs CUPS has not finished sending yet. */
 export async function queuedJobIds() {
   if (dryRun) return new Set<string>();
-  const { stdout } = await run("lpstat", ["-o", config.printerName]);
-  return new Set(stdout.split("\n").map((line) => line.split(" ")[0]));
+  return new Set((await queuedJobs()).map((j) => j.id));
 }
 
 export async function cancel(cupsJobId: string) {
-  if (!dryRun) await run("cancel", [cupsJobId]);
+  if (dryRun) return;
+  // Secure Print jobs belong to their own CUPS user (see submit); CUPS only lets the owner
+  // cancel.
+  const owner = (await queuedJobs()).find((j) => j.id === cupsJobId)?.owner;
+  await run("cancel", owner ? ["-U", owner, cupsJobId] : [cupsJobId]);
 }
 
 export async function printerStatus() {

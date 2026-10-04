@@ -118,7 +118,6 @@ printD is configured with environment variables: `.env.local` during development
 | `SECURE_PRINT` | `true` | Hold jobs on the printer until the PIN is entered. Needs `PRINTER_DRIVER=ufr2`. |
 | `SECURE_PRINT_PIN_LENGTH` | `4` | PIN length, 4–7 digits. |
 | `SECURE_PRINT_HOLD_HOURS` | `4` | How long a PIN is shown after sending. Match the printer's Secure Print deletion time. |
-| `SECURE_PRINT_PIN_ENCODING` | *depends* | How the PIN is passed to Canon's driver: `base64` or `plain`. Defaults to what the driver build for the current platform expects. |
 | `MAX_UPLOAD_MB` | `50` | Largest accepted upload. |
 | `MAX_COPIES` | `50` | Most copies per job. |
 | `UPLOAD_TTL_MINUTES` | `60` | Uploads that are never printed are deleted after this. |
@@ -178,9 +177,24 @@ For each job, printD sends these Canon options with `lp`:
 | `CNColorMode` | `color` / `mono` |
 | `CNDuplex`, `sides` | double- or single-sided (driver builds use one or the other) |
 | `CNJobExecMode` | `secured` |
-| `CNUsrName` | the user's username, shown on the printer's screen |
 | `CNDocName` | the file name (ASCII only) |
-| `CNSecuredPrint` | the PIN (see `SECURE_PRINT_PIN_ENCODING`) |
+| `CNUsrName` | the user's username, shown on the printer's screen (macOS only) |
+| `CNSecuredPrint` | the PIN (macOS only) |
+
+Canon's Linux driver ignores `CNUsrName` and `CNSecuredPrint` and fails the job with "none of
+secured print password and username". It reads both from
+`/etc/cngplp2/account/<CUPS job user>.conf` instead, so printD submits each Secure Print job
+as its own CUPS user (`lp -U printd-<random>`) and writes that file first:
+
+```
+<queue>
+s_id=<base64 username>
+s_password=<base64 PIN>
+</queue>
+```
+
+The directory must be writable by printD and readable by `lp` (`setup.sh` does this). Files
+are deleted once CUPS has sent their job.
 
 ## Deployment
 
@@ -280,9 +294,10 @@ Another program is holding the printer's USB connection, usually an IPP-over-USB
 (`ipp-usb` on Linux, or an automatically added AirPrint queue on desktops). Remove `ipp-usb`
 or pause the AirPrint queue (`cupsdisable <queue>`), then unplug and replug the USB cable.
 
-**The job shows up under Secure Print, but the PIN is rejected.**
-The driver expects the PIN in the other format. Switch `SECURE_PRINT_PIN_ENCODING` between
-`base64` and `plain` and restart.
+**The CUPS log says "none of secured print password and username".**
+The driver found no account file for the job. Check that `/etc/cngplp2/account` is owned by
+`printd`, group `lp`, mode `2750` (rerun `setup.sh`) and that the queue name in the files
+matches `PRINTER_NAME`.
 
 **Jobs print immediately instead of waiting for a PIN.**
 Secure Print is not enabled on the queue. Check `lpoptions -p <queue> -l` and set

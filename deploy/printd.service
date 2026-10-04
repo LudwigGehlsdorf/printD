@@ -19,12 +19,13 @@ ExecStart=/usr/bin/node deploy/server.mjs
 Restart=on-failure
 RestartSec=5
 
-# Hardening. The app only writes its data directory and talks to CUPS over its socket.
+# Hardening. The app only writes its data directory and Canon's Secure Print account files,
+# and talks to CUPS over its socket.
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/var/lib/printd /run/cups
+ReadWritePaths=/var/lib/printd /run/cups /etc/cngplp2/account
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
