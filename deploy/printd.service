@@ -11,8 +11,8 @@ WorkingDirectory=/opt/printd
 EnvironmentFile=/etc/printd/printd.env
 Environment=HOME=/var/lib/printd
 Environment=NODE_ENV=production
-# Serves HTTPS on all interfaces with the self-signed certificate made by setup.sh.
-Environment=PORT=8443
+# Serves HTTPS on all interfaces (PORT in printd.env, default 8443) with the self-signed
+# certificate made by setup.sh.
 Environment=TLS_CERT=/etc/printd/tls/cert.pem
 Environment=TLS_KEY=/etc/printd/tls/key.pem
 ExecStart=/usr/bin/node deploy/server.mjs

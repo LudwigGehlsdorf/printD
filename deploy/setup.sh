@@ -18,6 +18,8 @@ DATA_DIR=/var/lib/printd
 ENV_FILE=/etc/printd/printd.env
 TLS_DIR=/etc/printd/tls
 QUEUE=printd
+PORT=8443
+URL="https://${HOST:-$(hostname).local}:$PORT"
 
 # Canon UFR II/UFRII LT Printer Driver for Linux V6.30 (official Canon download).
 CANON_URL="http://gdlp01.c-wss.com/gds/8/0100007658/48/linux-UFRII-drv-v630-m17n-07.tar.gz"
@@ -85,9 +87,16 @@ chown -R printd:printd "$REPO_DIR"
 step "Writing $ENV_FILE"
 install -d -m 750 -g printd /etc/printd
 if [[ ! -f "$ENV_FILE" ]]; then
+  # The template holds development values; these lines switch them to production.
   sed -e "s|^AUTH_SECRET=.*|AUTH_SECRET=$(openssl rand -base64 33)|" \
-    -e "s|^AUTH_URL=.*|AUTH_URL=https://${HOST:-$(hostname).local}:8080|" \
-    "$REPO_DIR/deploy/printd.env.example" >"$ENV_FILE"
+    -e "s|^# AUTH_URL=.*|AUTH_URL=$URL|" \
+    -e "s|^AUTH_AUTHENTIK_ID=.*|AUTH_AUTHENTIK_ID=|" \
+    -e "s|^AUTH_AUTHENTIK_ISSUER=.*|AUTH_AUTHENTIK_ISSUER=|" \
+    -e "s|^PRINT_MODE=.*|PRINT_MODE=cups|" \
+    -e "s|^PRINTER_NAME=.*|PRINTER_NAME=$QUEUE|" \
+    -e "s|^DATA_DIR=.*|DATA_DIR=$DATA_DIR|" \
+    -e "s|^# PORT=.*|PORT=$PORT|" \
+    "$REPO_DIR/.env.example" >"$ENV_FILE"
   note "Created. Fill in the AUTH_AUTHENTIK_* values before logging in."
 else
   note "Exists, leaving it as it is."
@@ -137,7 +146,7 @@ systemctl enable printd
 systemctl restart printd
 
 step "Done"
-note "Open:                   https://${HOST:-$(hostname).local}:8080 (accept the certificate warning)"
+note "Open:                   $URL (accept the certificate warning)"
 note "Check the service:      systemctl status printd"
 note "Follow its log:         journalctl -u printd -f"
 note "Settings:               sudoedit $ENV_FILE && sudo systemctl restart printd"

@@ -101,7 +101,9 @@ and set `PRINT_MODE=cups` and `PRINTER_NAME` in `.env.local`.
 ## Configuration
 
 printD is configured with environment variables: `.env.local` during development, and
-`/etc/printd/printd.env` in production (see [`deploy/printd.env.example`](deploy/printd.env.example)).
+`/etc/printd/printd.env` in production. Both start from [`.env.example`](.env.example), which
+notes the production value next to each setting. printD checks the settings when it starts
+and refuses to run with a mistake, listing every problem in its log.
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -109,7 +111,7 @@ printD is configured with environment variables: `.env.local` during development
 | `AUTH_AUTHENTIK_ID` | – | Client ID of the Authentik provider. |
 | `AUTH_AUTHENTIK_SECRET` | – | Client secret (empty for public clients). |
 | `AUTH_AUTHENTIK_ISSUER` | – | The provider's *OpenID Configuration Issuer* URL. |
-| `AUTH_URL` | – | The address users open printD at, e.g. `https://print.example.org:8080`. Required in production: login redirects are built from it. |
+| `AUTH_URL` | – | The address users open printD at, e.g. `https://print.example.org:8443`. Required in production: login redirects are built from it. |
 | `AUTH_TRUST_HOST` | – | Set to `true` to build login redirects from the request instead (development, or behind a reverse proxy). |
 | `PRINT_ALLOWED_GROUPS` | *(empty)* | Comma-separated Authentik groups that may print; subgroups count (`dsek.infu` includes `dsek.infu.mdlm`). Empty: every account. |
 | `PRINT_MODE` | `dry-run` | `cups` to print, `dry-run` to save PDFs to `DATA_DIR/dry-run` instead. |
@@ -123,6 +125,7 @@ printD is configured with environment variables: `.env.local` during development
 | `UPLOAD_TTL_MINUTES` | `60` | Uploads that are never printed are deleted after this. |
 | `DATA_DIR` | `./data` | Database, uploads and test-mode output. |
 | `SOFFICE_PATH` | *auto* | Path to LibreOffice's `soffice`, if it is not found automatically. |
+| `PORT` | `8443` | HTTPS port of the production server. |
 | `DEV_FAKE_USER` | – | `1` skips login during development. Ignored in production. |
 
 ## Authentik setup
@@ -131,7 +134,7 @@ printD logs users in with OpenID Connect. In Authentik:
 
 1. Go to **Applications → Providers → Create** and choose **OAuth2/OpenID Provider**.
    - **Client type:** Confidential
-   - **Redirect URI:** `https://<your printD host>:8080/api/auth/callback/authentik`
+   - **Redirect URI:** `https://<your printD host>:8443/api/auth/callback/authentik`
    - **Scopes:** keep the defaults (`openid`, `email`, `profile`). The default profile
      mapping includes the user's `groups`, which printD uses for `PRINT_ALLOWED_GROUPS`.
 2. Go to **Applications → Applications → Create** and link it to the new provider.
@@ -198,17 +201,16 @@ are deleted once CUPS has sent their job.
 
 ## Deployment
 
-printD runs well on a small server such as a **Raspberry Pi 4 (2 GB RAM or more)** connected
-to the printer by USB. The scripts in [`deploy/`](deploy) set up a Debian-based system (for
+printD runs on a small server such as a **Raspberry Pi 3 or newer** connected to the printer
+by USB. It needs a 64-bit OS, since Canon's driver has no 32-bit ARM version. The scripts in [`deploy/`](deploy) set up a Debian-based system (for
 example 64-bit Raspberry Pi OS) from scratch:
 
 | File | Purpose |
 | --- | --- |
 | [`setup.sh`](deploy/setup.sh) | One-time setup. Safe to run again: it only does what is still missing. |
 | [`update.sh`](deploy/update.sh) | Pulls the latest version, rebuilds and restarts. |
-| [`printd.env.example`](deploy/printd.env.example) | Production settings, installed as `/etc/printd/printd.env`. |
-| [`printd.service`](deploy/printd.service) | systemd service: runs printD as user `printd`, serving HTTPS on port 8080. |
-| [`server.mjs`](deploy/server.mjs) | Starts printD behind Node's HTTPS server, since `next start` only serves plain HTTP. |
+| [`printd.service`](deploy/printd.service) | systemd service: runs printD as user `printd` and restarts it if it crashes. |
+| [`server.mjs`](deploy/server.mjs) | Serves printD over HTTPS, since `next start` only serves plain HTTP. Redirects `http://` on the same port to `https://`. |
 
 ### 1. Prepare the server
 
@@ -229,7 +231,8 @@ The script:
 - downloads Canon's UFR II driver and verifies its checksum
 - blocks `ipp-usb`, which would otherwise take over the printer's USB connection
 - creates the `printd` user, the data directory `/var/lib/printd` and the settings file
-  `/etc/printd/printd.env` with a fresh `AUTH_SECRET`
+  `/etc/printd/printd.env` with production values, a fresh `AUTH_SECRET` and
+  `AUTH_URL=https://<server>.local:8443`
 - creates a self-signed TLS certificate in `/etc/printd/tls/`
 - creates the CUPS queue `printd`, if the printer is connected
 - builds printD and starts it as a service
@@ -246,23 +249,27 @@ sudo systemctl restart printd
 
 ### 4. Make it reachable
 
-printD serves HTTPS on port 8080 with a self-signed certificate, so it is reached at
-`https://<host>:8080`. Browsers warn about the certificate the first time; each user has to
+printD serves HTTPS on port 8443 with a self-signed certificate, so it is reached at
+`https://<host>:8443`. Browsers warn about the certificate the first time; each user has to
 accept the warning once.
 
-To reach it from outside the local network, open (or forward) port 8080 to the server. If it
-has a hostname, run the script again with it so the certificate covers that name too:
+To reach it from outside the local network, open (or forward) port 8443 to the server. Give
+the server a fixed address on the network (a DHCP reservation in the router), so the
+forwarding keeps working after a reboot. If it has a hostname, run the script again with it
+so the certificate covers that name too, and set `AUTH_URL` to the new address:
 
 ```sh
 sudo /opt/printd/deploy/setup.sh print.example.org
+sudoedit /etc/printd/printd.env    # AUTH_URL=https://print.example.org:8443
+sudo systemctl restart printd
 ```
 
 > **No hostname yet?** Put the public development login from `.env.example` in
-> `/etc/printd/printd.env` and reach printD through an SSH tunnel, so it is served on
-> `localhost`, which that login accepts:
+> `/etc/printd/printd.env`, set `AUTH_URL=https://localhost:3000` and reach printD through an
+> SSH tunnel, so it is served on `localhost`, which that login accepts:
 >
 > ```sh
-> ssh -L 3000:localhost:8080 <user>@<server>
+> ssh -L 3000:localhost:8443 <user>@<server>
 > # then open https://localhost:3000
 > ```
 
@@ -288,6 +295,14 @@ The print log is the SQLite database `/var/lib/printd/print.db` (table `jobs`). 
 like any other file.
 
 ## Troubleshooting
+
+**printD does not start, or keeps restarting.**
+Check `journalctl -u printd -n 30`. A line `printD is misconfigured:` lists every setting to
+fix in `/etc/printd/printd.env`.
+
+**Logging in sends you to the wrong address (such as `localhost`).**
+`AUTH_URL` must be the address in the browser's address bar, and the Authentik provider's
+redirect URI `<AUTH_URL>/api/auth/callback/authentik`.
 
 **The job stays at "The printer is offline".**
 Another program is holding the printer's USB connection, usually an IPP-over-USB service
