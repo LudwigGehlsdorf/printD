@@ -4,6 +4,8 @@
 #   sudo git clone <repo> /opt/printd
 #   sudo /opt/printd/deploy/setup.sh [hostname]
 #
+# The hostname, if given, is added to the self-signed TLS certificate.
+#
 # Safe to run again: every step only does what is still missing. Run it again after
 # connecting the printer if the printer queue could not be created the first time.
 set -euo pipefail
@@ -14,6 +16,7 @@ HOST="${1:-}"
 REPO_DIR=/opt/printd
 DATA_DIR=/var/lib/printd
 ENV_FILE=/etc/printd/printd.env
+TLS_DIR=/etc/printd/tls
 QUEUE=printd
 
 # Canon UFR II/UFRII LT Printer Driver for Linux V6.30 (official Canon download).
@@ -50,8 +53,7 @@ apt-get install -y --no-install-recommends \
   cups cups-client cups-bsd \
   libreoffice-writer libreoffice-calc libreoffice-impress \
   fonts-dejavu fonts-liberation2 fonts-crosextra-carlito fonts-crosextra-caladea \
-  build-essential python3 \
-  caddy
+  build-essential python3
 
 step "Installing Node.js 22"
 if ! command -v node >/dev/null || [[ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]]; then
@@ -88,6 +90,23 @@ fi
 chown root:printd "$ENV_FILE"
 chmod 640 "$ENV_FILE"
 
+step "Creating the self-signed TLS certificate"
+# Covers this machine's name and addresses, plus the hostname if one is given. Made again
+# when a new hostname is given.
+if [[ ! -f "$TLS_DIR/cert.pem" ]] || { [[ -n "$HOST" ]] && ! openssl x509 -in "$TLS_DIR/cert.pem" -noout -ext subjectAltName | grep -q "DNS:$HOST\b"; }; then
+  names="DNS:$(hostname),DNS:$(hostname).local,DNS:localhost,IP:127.0.0.1"
+  [[ -n "$HOST" ]] && names="DNS:$HOST,$names"
+  for ip in $(hostname -I); do names+=",IP:$ip"; done
+  install -d -m 750 -g printd "$TLS_DIR"
+  openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=${HOST:-$(hostname)}" \
+    -addext "subjectAltName=$names" -keyout "$TLS_DIR/key.pem" -out "$TLS_DIR/cert.pem" 2>/dev/null
+  chown root:printd "$TLS_DIR/key.pem" "$TLS_DIR/cert.pem"
+  chmod 640 "$TLS_DIR/key.pem"
+  note "Created for $names"
+else
+  note "Exists, leaving it as it is."
+fi
+
 step "Setting up the printer queue '$QUEUE'"
 systemctl enable --now cups
 if lpstat -p "$QUEUE" >/dev/null 2>&1; then
@@ -112,17 +131,8 @@ systemctl daemon-reload
 systemctl enable printd
 systemctl restart printd
 
-step "Configuring Caddy"
-if [[ -n "$HOST" ]]; then
-  sed "s|^PRINTD_HOST {|$HOST {|" "$REPO_DIR/deploy/Caddyfile" >/etc/caddy/Caddyfile
-  systemctl reload-or-restart caddy
-  note "Serving https://$HOST"
-else
-  note "No hostname given, so Caddy is left alone. Run again with the hostname once it exists:"
-  note "  sudo $REPO_DIR/deploy/setup.sh print.example.org"
-fi
-
 step "Done"
+note "Open:                   https://${HOST:-$(hostname).local}:8080 (accept the certificate warning)"
 note "Check the service:      systemctl status printd"
 note "Follow its log:         journalctl -u printd -f"
 note "Settings:               sudoedit $ENV_FILE && sudo systemctl restart printd"

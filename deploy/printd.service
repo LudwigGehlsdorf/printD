@@ -10,8 +10,12 @@ Group=printd
 WorkingDirectory=/opt/printd
 EnvironmentFile=/etc/printd/printd.env
 Environment=HOME=/var/lib/printd
-# Only Caddy talks to the app; it is not reachable from the network directly.
-ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3000
+Environment=NODE_ENV=production
+# Serves HTTPS on all interfaces with the self-signed certificate made by setup.sh.
+Environment=PORT=8080
+Environment=TLS_CERT=/etc/printd/tls/cert.pem
+Environment=TLS_KEY=/etc/printd/tls/key.pem
+ExecStart=/usr/bin/node deploy/server.mjs
 Restart=on-failure
 RestartSec=5
 

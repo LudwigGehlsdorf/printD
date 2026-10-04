@@ -53,8 +53,7 @@ any printer that has a CUPS driver (without Secure Print, jobs simply print righ
 
 **Built with** [Next.js](https://nextjs.org), [Auth.js](https://authjs.dev),
 [pdf-lib](https://pdf-lib.js.org), [pdf.js](https://mozilla.github.io/pdf.js/),
-[sharp](https://sharp.pixelplumbing.com), SQLite, CUPS, LibreOffice and
-[Caddy](https://caddyserver.com).
+[sharp](https://sharp.pixelplumbing.com), SQLite, CUPS and LibreOffice.
 
 ## Getting started
 
@@ -132,7 +131,7 @@ printD logs users in with OpenID Connect. In Authentik:
 
 1. Go to **Applications → Providers → Create** and choose **OAuth2/OpenID Provider**.
    - **Client type:** Confidential
-   - **Redirect URI:** `https://<your printD host>/api/auth/callback/authentik`
+   - **Redirect URI:** `https://<your printD host>:8080/api/auth/callback/authentik`
    - **Scopes:** keep the defaults (`openid`, `email`, `profile`). The default profile
      mapping includes the user's `groups`, which printD uses for `PRINT_ALLOWED_GROUPS`.
 2. Go to **Applications → Applications → Create** and link it to the new provider.
@@ -193,8 +192,8 @@ example 64-bit Raspberry Pi OS) from scratch:
 | [`setup.sh`](deploy/setup.sh) | One-time setup. Safe to run again: it only does what is still missing. |
 | [`update.sh`](deploy/update.sh) | Pulls the latest version, rebuilds and restarts. |
 | [`printd.env.example`](deploy/printd.env.example) | Production settings, installed as `/etc/printd/printd.env`. |
-| [`printd.service`](deploy/printd.service) | systemd service: runs printD as user `printd` on `127.0.0.1:3000`. |
-| [`Caddyfile`](deploy/Caddyfile) | HTTPS reverse proxy with automatic certificates. |
+| [`printd.service`](deploy/printd.service) | systemd service: runs printD as user `printd`, serving HTTPS on port 8080. |
+| [`server.mjs`](deploy/server.mjs) | Starts printD behind Node's HTTPS server, since `next start` only serves plain HTTP. |
 
 ### 1. Prepare the server
 
@@ -211,11 +210,12 @@ sudo /opt/printd/deploy/setup.sh
 
 The script:
 
-- installs CUPS, LibreOffice, fonts, Node.js 22 and Caddy
+- installs CUPS, LibreOffice, fonts and Node.js 22
 - downloads Canon's UFR II driver and verifies its checksum
 - blocks `ipp-usb`, which would otherwise take over the printer's USB connection
 - creates the `printd` user, the data directory `/var/lib/printd` and the settings file
   `/etc/printd/printd.env` with a fresh `AUTH_SECRET`
+- creates a self-signed TLS certificate in `/etc/printd/tls/`
 - creates the CUPS queue `printd`, if the printer is connected
 - builds printD and starts it as a service
 
@@ -229,10 +229,14 @@ sudoedit /etc/printd/printd.env
 sudo systemctl restart printd
 ```
 
-### 4. Add a hostname and HTTPS
+### 4. Make it reachable
 
-Point a hostname at the server, open ports 80 and 443 to it, and run the script again with
-the hostname. Caddy fetches a certificate from Let's Encrypt automatically:
+printD serves HTTPS on port 8080 with a self-signed certificate, so it is reached at
+`https://<host>:8080`. Browsers warn about the certificate the first time; each user has to
+accept the warning once.
+
+To reach it from outside the local network, open (or forward) port 8080 to the server. If it
+has a hostname, run the script again with it so the certificate covers that name too:
 
 ```sh
 sudo /opt/printd/deploy/setup.sh print.example.org
@@ -243,8 +247,8 @@ sudo /opt/printd/deploy/setup.sh print.example.org
 > `localhost`, which that login accepts:
 >
 > ```sh
-> ssh -L 3000:localhost:3000 <user>@<server>
-> # then open http://localhost:3000
+> ssh -L 3000:localhost:8080 <user>@<server>
+> # then open https://localhost:3000
 > ```
 
 ### 5. Make a test print
@@ -303,7 +307,7 @@ The queue in `PRINTER_NAME` does not exist. List the queues with `lpstat -p`.
 
 ```
 printd/
-├── deploy/                  Production setup: scripts, systemd service, Caddy, settings
+├── deploy/                  Production setup: scripts, systemd service, HTTPS server, settings
 └── src/
     ├── app/                 Pages and API routes (/api/uploads, /api/print, /api/jobs)
     ├── components/
